@@ -10,7 +10,6 @@ package com.joyent.manta.archiver;
 
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaMetadata;
-import com.joyent.manta.client.MantaObject;
 import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.exception.MantaClientHttpResponseException;
 import com.joyent.manta.http.MantaHttpHeaders;
@@ -26,7 +25,6 @@ import java.io.IOException;
 import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME;
 
@@ -53,12 +51,6 @@ public class MantaTransferClient implements TransferClient {
         } else {
             dirCache.add(mantaRoot + MantaClient.SEPARATOR);
         }
-
-        final Set<String> directories = client.find(mantaRoot)
-                .filter(MantaObject::isDirectory).limit(DIRECTORY_CACHE_SIZE)
-                .map(o -> o.getPath() + MantaClient.SEPARATOR)
-                .collect(Collectors.toSet());
-        dirCache.addAll(directories);
     }
 
     @Override
