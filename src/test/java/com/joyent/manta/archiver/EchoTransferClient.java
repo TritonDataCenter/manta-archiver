@@ -23,6 +23,11 @@ public class EchoTransferClient implements TransferClient {
     }
 
     @Override
+    public int getMaximumConcurrentUploads() {
+        return 12;
+    }
+
+    @Override
     public void close() {
         // Do nothing
     }

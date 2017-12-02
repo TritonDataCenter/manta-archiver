@@ -28,6 +28,8 @@ public class TransferManagerTest {
 
         try (TransferManager manager = new TransferManager(client, root, mantaRoot)) {
             manager.uploadAll();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -53,6 +55,8 @@ public class TransferManagerTest {
 
         try (TransferManager manager = new TransferManager(client, root, mantaRoot)) {
             manager.uploadAll();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

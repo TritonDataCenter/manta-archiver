@@ -25,11 +25,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.util.Iterator;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TransferQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static java.io.File.separator;
@@ -49,6 +48,8 @@ public class ObjectUploadQueueLoader {
 
     private final ForkJoinPool executor;
     private final TransferQueue<ObjectUpload> queue;
+    private final int queuePreloadSize;
+    private final AtomicInteger preloadedCount = new AtomicInteger();
 
     static {
         // Queue up deletion of temp files when process exits
@@ -63,8 +64,9 @@ public class ObjectUploadQueueLoader {
         }));
     }
 
-    public ObjectUploadQueueLoader(final ForkJoinPool executor) {
+    public ObjectUploadQueueLoader(final ForkJoinPool executor, final int queuePreloadSize) {
         this.executor = executor;
+        this.queuePreloadSize = queuePreloadSize;
         this.queue = new LinkedTransferQueue<>();
 
         boolean dataDirCreated = TEMP_PATH.toFile().mkdir();
@@ -160,63 +162,27 @@ public class ObjectUploadQueueLoader {
             PreprocessingInputStream in = readPath(path);
             FileUpload fileUpload = buildFileToUpload(in); // in is closed here
 
-            queue.transfer(fileUpload);
+            LOG.debug("Finished compressing [{}]", fileUpload.getSourcePath());
+
+            if (preloadedCount.getAndIncrement() > queuePreloadSize) {
+                queue.transfer(fileUpload);
+            } else {
+                queue.put(fileUpload);
+            }
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 
-    @SuppressWarnings("unused")
-    void processDirectoryContents(final Path root) {
-        final ForkJoinTask<?>[] buffer = new ForkJoinTask<?>[executor.getParallelism() * 10];
-
-        try (Stream<Path> contents = directoryContentsStream(root);
-             Stream<ForkJoinTask<?>> tasks = contents.map(p -> executor.submit(() -> addObjectToQueue(p)))) {
-
-            final Iterator<ForkJoinTask<?>> itr = tasks.iterator();
-
-            while (itr.hasNext()) {
-                final ForkJoinTask<?> element = itr.next();
-
-                if (element.isDone()) {
-                    continue;
-                }
-
-                bufferJoinTasks(buffer, element);
-            }
-        }
-
-        for (ForkJoinTask<?> element : buffer) {
-            if (element == null || element.isDone()) {
-                continue;
-            }
-
-            element.quietlyJoin();
-        }
+    long processDirectoryContents(final Path root) {
+        return directoryContentsStream(root)
+                .map(p -> executor.submit(() -> addObjectToQueue(p)))
+                .count();
     }
 
     public TransferQueue<ObjectUpload> getQueue() {
         return queue;
-    }
-
-    private static void bufferJoinTasks(final ForkJoinTask<?>[] buffer, final ForkJoinTask<?> element) {
-        for (int i = 0; i < buffer.length; i++) {
-            if (buffer[i] == null || buffer[i].isDone()) {
-                buffer[i] = element;
-                return;
-            }
-        }
-
-        /* There was no free slot to place a task because all slots are running,
-         * so we wait for the middlemost task in the buffer to complete and then add
-         * the current task to that slot.
-         */
-        final int middleSlot = buffer.length / 2;
-        buffer[middleSlot].quietlyJoin();
-
-        if (!element.isDone()) {
-            buffer[middleSlot] = element;
-        }
     }
 
     /**

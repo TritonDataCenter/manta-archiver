@@ -168,6 +168,11 @@ public class MantaTransferClient implements TransferClient {
     }
 
     @Override
+    public int getMaximumConcurrentUploads() {
+        return this.client.getContext().getMaximumConnections();
+    }
+
+    @Override
     public void close() {
         client.close();
     }

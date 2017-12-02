@@ -8,6 +8,7 @@
 package com.joyent.manta.archiver;
 
 public interface TransferClient extends AutoCloseable {
+    int getMaximumConcurrentUploads();
     void mkdirp(String path, DirectoryUpload upload);
     void put(String path, FileUpload upload);
     @Override

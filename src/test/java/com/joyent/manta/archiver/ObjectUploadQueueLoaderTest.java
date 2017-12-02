@@ -35,7 +35,7 @@ public class ObjectUploadQueueLoaderTest {
 
     public void canProcessDirectory() {
         ForkJoinPool executor = new ForkJoinPool();
-        ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(executor);
+        ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(executor,10);
         Path root = Paths.get("/opt/duck");
 
         ForkJoinTask<?> task = executor.submit(() -> loader.processDirectoryContents(root));

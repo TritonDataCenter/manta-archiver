@@ -64,7 +64,7 @@
         <!-- Dependency versions -->
         <dependency.checkstyle.version>8.2</dependency.checkstyle.version>
         <dependency.picocli.version>1.0.1</dependency.picocli.version>
-        <dependency.java-manta.version>3.2.0</dependency.java-manta.version>
+        <dependency.java-manta.version>3.2.1</dependency.java-manta.version>
         <dependency.commons-lang>3.6</dependency.commons-lang>
         <dependency.commons-compress.version>1.14</dependency.commons-compress.version>
         <dependency.commons-math.version>3.6.1</dependency.commons-math.version>
@@ -106,7 +106,7 @@
         <dependency>
             <groupId>com.joyent.manta</groupId>
             <artifactId>java-manta-client-unshaded</artifactId>
-            <version>LATEST</version>
+            <version>${dependency.java-manta.version}</version>
         </dependency>
 
         <dependency>
