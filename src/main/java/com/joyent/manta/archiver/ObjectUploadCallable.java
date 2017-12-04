@@ -10,12 +10,14 @@ package com.joyent.manta.archiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
 
 /**
  * {@link Callable} implementation that handles file uploads.
@@ -27,14 +29,31 @@ class ObjectUploadCallable implements Callable<Void> {
     private final CountDownLatch latch;
     private final TransferQueue<ObjectUpload> queue;
     private final long noOfObjectToUpload;
-    private final Consumer<ObjectUpload> uploadMethod;
+    private final TransferClient client;
+    private final Path localRoot;
 
-    public ObjectUploadCallable(final AtomicLong totalUploads, final CountDownLatch latch, final TransferQueue<ObjectUpload> queue, final long noOfObjectToUpload, final Consumer<ObjectUpload> uploadMethod) {
+    /**
+     * Creates a new instance.
+     *
+     * @param totalUploads total number of completed uploads
+     * @param latch count down to track when upload threads have finished
+     * @param queue queue containing uploads
+     * @param noOfObjectToUpload total number of objects to upload
+     * @param client transfer client used to upload objects
+     * @param localRoot local working directory
+     */
+    ObjectUploadCallable(final AtomicLong totalUploads,
+                         final CountDownLatch latch,
+                         final TransferQueue<ObjectUpload> queue,
+                         final long noOfObjectToUpload,
+                         final TransferClient client,
+                         final Path localRoot) {
         this.totalUploads = totalUploads;
         this.latch = latch;
         this.queue = queue;
         this.noOfObjectToUpload = noOfObjectToUpload;
-        this.uploadMethod = uploadMethod;
+        this.client = client;
+        this.localRoot = localRoot;
     }
 
     @Override
@@ -48,7 +67,7 @@ class ObjectUploadCallable implements Callable<Void> {
                 }
 
                 try {
-                    uploadMethod.accept(upload);
+                    uploadObject(upload);
                 } catch (RuntimeException e) {
                     LOG.error("Error uploading file. Adding file back to the queue");
                     queue.put(upload);
@@ -68,5 +87,47 @@ class ObjectUploadCallable implements Callable<Void> {
 
         latch.countDown();
         return null;
+    }
+
+    /**
+     * Uploads an object to the remote data store.
+     *
+     * @param upload object to upload.
+     */
+    void uploadObject(final ObjectUpload upload) {
+        if (upload.isDirectory()) {
+            createDirectory((DirectoryUpload)upload);
+        } else {
+            uploadFile((FileUpload)upload);
+        }
+    }
+
+    /**
+     * Creates directory on the remote data store.
+     * @param upload directory to create
+     */
+    void createDirectory(final DirectoryUpload upload) {
+        String mantaDir = client.convertLocalPathToRemotePath(upload, localRoot);
+
+        client.mkdirp(mantaDir, upload);
+    }
+
+    /**
+     * Uploads a file to the remote data store.
+     * @param upload file to upload
+     */
+    void uploadFile(final FileUpload upload) {
+        String mantaPath = client.convertLocalPathToRemotePath(upload, localRoot);
+
+        client.put(mantaPath, upload);
+
+        // Clean up the temp upload file so we don't leave it lingering
+        try {
+            Files.deleteIfExists(upload.getTempPath());
+        } catch (IOException e) {
+            String msg = String.format("Unable to delete [%s]",
+                    upload.getTempPath());
+            LOG.warn(msg, e);
+        }
     }
 }

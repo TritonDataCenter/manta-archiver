@@ -12,10 +12,15 @@ import java.nio.file.Path;
 /**
  * Class that represents a directory to be added to Manta.
  */
-public class DirectoryUpload implements ObjectUpload {
+class DirectoryUpload implements ObjectUpload {
     private final Path sourcePath;
 
-    public DirectoryUpload(final Path sourcePath) {
+    /**
+     * Creates new instance of a directory upload object.
+     *
+     * @param sourcePath path to original directory
+     */
+    DirectoryUpload(final Path sourcePath) {
         this.sourcePath = sourcePath;
     }
 

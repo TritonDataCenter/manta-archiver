@@ -17,6 +17,10 @@ import org.slf4j.LoggerFactory;
 public class LoggingUncaughtExceptionHandler implements Thread.UncaughtExceptionHandler {
     private final Logger logger;
 
+    /**
+     * Creates a new instance that logs to the specified logger.
+     * @param loggerName logger name to log to
+     */
     public LoggingUncaughtExceptionHandler(final String loggerName) {
         this.logger = LoggerFactory.getLogger(loggerName);
     }

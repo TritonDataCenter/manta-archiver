@@ -18,7 +18,7 @@ import java.time.Instant;
  * Class that provides properties about a file that has been compressed and
  * is pending upload to Manta.
  */
-public class FileUpload implements ObjectUpload {
+class FileUpload implements ObjectUpload {
     private final Path sourcePath;
     private final Path tempPath;
     private final byte[] checksum;
@@ -26,9 +26,19 @@ public class FileUpload implements ObjectUpload {
     private final long uncompressedSize;
     private final long compressedSize;
 
-    public FileUpload(final Path tempPath, final Path sourcePath,
-                      final byte[] checksum, final Instant lastModified,
-                      final long uncompressedSize, final long compressedSize) {
+    /**
+     * Creates a new instance of a file object.
+     *
+     * @param tempPath path to the compressed version of the file
+     * @param sourcePath path to the original uncompressed version of the file
+     * @param checksum checksum of the original uncompressed version of the file
+     * @param lastModified last-modified timestamp
+     * @param uncompressedSize size of the file uncompressed
+     * @param compressedSize size of the file compressed
+     */
+    FileUpload(final Path tempPath, final Path sourcePath,
+               final byte[] checksum, final Instant lastModified,
+               final long uncompressedSize, final long compressedSize) {
         this.sourcePath = sourcePath;
         this.tempPath = tempPath;
         this.checksum = checksum;
@@ -47,27 +57,30 @@ public class FileUpload implements ObjectUpload {
         return sourcePath;
     }
 
-    public Path getTempPath() {
+    Path getTempPath() {
         return tempPath;
     }
 
-    public byte[] getChecksum() {
+    byte[] getChecksum() {
         return checksum;
     }
 
-    public Instant getLastModified() {
+    Instant getLastModified() {
         return lastModified;
     }
 
-    public long getUncompressedSize() {
+    long getUncompressedSize() {
         return uncompressedSize;
     }
 
-    public long getCompressedSize() {
+    long getCompressedSize() {
         return compressedSize;
     }
 
-    public String getCompressionPercentage() {
+    /**
+     * @return percentage in which the file was compressed from the original size
+     */
+    String getCompressionPercentage() {
         final double ratio = (double)compressedSize / (double)uncompressedSize;
         final double percentage = ratio * 100;
         return Precision.round(percentage, 1) + "%";

@@ -15,19 +15,25 @@ import java.nio.file.Path;
  * {@link java.io.OutputStream} implementation that preserves access to fields so that
  * they can be used for debugging later.
  */
-public class PreprocessingOutputStream extends FilterOutputStream {
+class PreprocessingOutputStream extends FilterOutputStream {
     private final Path tempPath;
 
-    public PreprocessingOutputStream(final OutputStream out, final Path tempPath) {
+    /**
+     * Creates new instance.
+     *
+     * @param out OutputStream to wrap
+     * @param tempPath path to temporary file in which the wrapped stream is writing to
+     */
+    PreprocessingOutputStream(final OutputStream out, final Path tempPath) {
         super(out);
         this.tempPath = tempPath;
     }
 
-    public Path getTempPath() {
+    Path getTempPath() {
         return tempPath;
     }
 
-    public long getSize() {
+    long getSize() {
         return tempPath.toFile().length();
     }
 }

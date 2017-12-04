@@ -22,13 +22,19 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.ZoneOffset;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.Set;
 
 import static java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME;
 
-public class MantaTransferClient implements TransferClient {
+/**
+ * {@link TransferClient} implementation that allows for the transfer of files
+ * to and from Manta.
+ */
+class MantaTransferClient implements TransferClient {
     private static final Logger LOG = LoggerFactory.getLogger(MantaTransferClient.class);
 
     private static final int DIRECTORY_CACHE_SIZE = 4096;
@@ -37,14 +43,23 @@ public class MantaTransferClient implements TransferClient {
             new LRUMap<>(DIRECTORY_CACHE_SIZE));
 
     private MantaClient client;
+    private final String mantaRoot;
 
-    public MantaTransferClient(final MantaClient client, final String mantaRoot) {
+    /**
+     * Creates a new instance based on the specified Manta client and the
+     * remote working directory.
+     *
+     * @param client Manta client used to transfer objects to Manta
+     * @param mantaRoot remote working directory
+     */
+    MantaTransferClient(final MantaClient client, final String mantaRoot) {
         this.client = client;
+        this.mantaRoot = mantaRoot;
 
-        populateDirectoryCache(mantaRoot);
+        populateDirectoryCache();
     }
 
-    private void populateDirectoryCache(final String mantaRoot) {
+    private void populateDirectoryCache() {
         LOG.debug("Populating directory cache");
         if (mantaRoot.endsWith(MantaClient.SEPARATOR)) {
             dirCache.add(mantaRoot);
@@ -101,7 +116,7 @@ public class MantaTransferClient implements TransferClient {
     }
 
     private MantaObjectResponse put(final String path, final FileUpload upload, final boolean overwrite)
-            throws MantaClientHttpResponseException{
+            throws MantaClientHttpResponseException {
         final String dir = FilenameUtils.getFullPath(path);
         final File file = upload.getTempPath().toFile();
         final String base64Checksum = Base64.encodeBase64String(upload.getChecksum());
@@ -170,6 +185,43 @@ public class MantaTransferClient implements TransferClient {
     @Override
     public int getMaximumConcurrentUploads() {
         return this.client.getContext().getMaximumConnections();
+    }
+
+    @Override
+    public String convertLocalPathToRemotePath(final ObjectUpload upload,
+                                               final Path localRoot) {
+        Path sourcePath = upload.getSourcePath();
+        Path subPath = localRoot.relativize(sourcePath);
+
+        StringBuilder builder = new StringBuilder(mantaRoot);
+
+        Iterator<Path> itr = subPath.iterator();
+
+        String filename = "";
+
+        for (int parts = 0; itr.hasNext(); parts++) {
+            filename = itr.next().getFileName().toString();
+
+            if (filename.isEmpty()) {
+                continue;
+            }
+
+            if (parts > 0) {
+                builder.append(MantaClient.SEPARATOR);
+            }
+
+            builder.append(filename);
+        }
+
+        if (upload.isDirectory()
+                && !filename.isEmpty()
+                && !filename.endsWith(MantaClient.SEPARATOR)) {
+            builder.append(MantaClient.SEPARATOR);
+        } else {
+            builder.append(".").append(ObjectCompressor.COMPRESSION_TYPE);
+        }
+
+        return builder.toString();
     }
 
     @Override

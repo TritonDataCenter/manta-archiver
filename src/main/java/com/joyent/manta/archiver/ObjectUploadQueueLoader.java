@@ -37,7 +37,7 @@ import static java.io.File.separator;
  * Class in charge of compressing files and doing checksums on files that will
  * be copied to Manta.
  */
-public class ObjectUploadQueueLoader {
+class ObjectUploadQueueLoader {
     private static final Logger LOG = LoggerFactory.getLogger(ObjectUploadQueueLoader.class);
 
     private static final int FILE_READ_BUFFER = 16_384;
@@ -64,7 +64,15 @@ public class ObjectUploadQueueLoader {
         }));
     }
 
-    public ObjectUploadQueueLoader(final ForkJoinPool executor, final int queuePreloadSize) {
+    /**
+     * Creates a new queue loader based on the specified fork join pool
+     * and the maximum queue preload size.
+     *
+     * @param executor fork join pool used for concurrent operations
+     * @param queuePreloadSize number of objects to process before we start
+     *                         blocking queue transfer operations
+     */
+    ObjectUploadQueueLoader(final ForkJoinPool executor, final int queuePreloadSize) {
         this.executor = executor;
         this.queuePreloadSize = queuePreloadSize;
         this.queue = new LinkedTransferQueue<>();
@@ -78,6 +86,13 @@ public class ObjectUploadQueueLoader {
         }
     }
 
+    /**
+     * Reads a given path as an input stream and attaches metadata about the
+     * path to the stream.
+     *
+     * @param path path to read
+     * @return stream of path contents
+     */
     PreprocessingInputStream readPath(final Path path) {
         final File file = path.toFile();
         try {
@@ -95,6 +110,12 @@ public class ObjectUploadQueueLoader {
         }
     }
 
+    /**
+     * Stream of an entire recursive directory structure for the specified path.
+     *
+     * @param root root to traverse
+     * @return stream of directory contents
+     */
     Stream<Path> directoryContentsStream(final Path root) {
         try {
             return Files.walk(root);
@@ -107,6 +128,13 @@ public class ObjectUploadQueueLoader {
         }
     }
 
+    /**
+     * {@link OutputStream} that compresses data and stores embedded metadata
+     * based on the specified path.
+     *
+     * @param path path to the source file that will be written to the stream
+     * @return stream configured to write to a compressed temp file
+     */
     PreprocessingOutputStream compressedTempFile(final Path path) {
         Path subPath = Paths.get(path + "." + ObjectCompressor.COMPRESSION_TYPE);
         Path tempPath = appendPaths(TEMP_PATH, subPath);
@@ -125,6 +153,14 @@ public class ObjectUploadQueueLoader {
         }
     }
 
+    /**
+     * Compresses a source file, writes it to a temp directory and returns an
+     * object with metadata about the object.
+     *
+     * @param in source stream
+     * @return object representing metadata and path of the temp file on the
+     *         local filesystem
+     */
     FileUpload buildFileToUpload(final PreprocessingInputStream in) {
         final Path path = in.getPath();
         final PreprocessingOutputStream out = compressedTempFile(path);
@@ -150,6 +186,15 @@ public class ObjectUploadQueueLoader {
                 in.getLastModified(), in.getSize(), out.getSize());
     }
 
+    /**
+     * Adds an object to the queue for eventual upload. This method will preload
+     * <code>queuePreloadSize</code> to the queue and then it will block until
+     * an uploader becomes available before transferring another item to the
+     * queue. This allows us to throttle the amount of compressed temp files
+     * being created on the system.
+     *
+     * @param path path to object to add to upload queue
+     */
     void addObjectToQueue(final Path path) {
         try {
             // Creates directory in temporary path
@@ -175,13 +220,25 @@ public class ObjectUploadQueueLoader {
         }
     }
 
-    long processDirectoryContents(final Path root) {
+    /**
+     * Creates a fork join task for each file that will need to be uploaded
+     * to the remote filesystem. These tasks will be queued in the fork join
+     * pool. When the tasks execute they will add an upload object to the
+     * upload queue.
+     *
+     * @param root local working directory
+     * @return total number of objects to upload
+     */
+    long uploadDirectoryContents(final Path root) {
         return directoryContentsStream(root)
                 .map(p -> executor.submit(() -> addObjectToQueue(p)))
                 .count();
     }
 
-    public TransferQueue<ObjectUpload> getQueue() {
+    /**
+     * @return reference to upload queue
+     */
+    TransferQueue<ObjectUpload> getQueue() {
         return queue;
     }
 

@@ -23,27 +23,35 @@ public class PreprocessingInputStream extends FilterInputStream {
     private final DigestInputStream digestInputStream;
     private final Instant lastModified;
 
-    public PreprocessingInputStream(final DigestInputStream in, final Path path,
-                                    final Instant lastModified) {
+    /**
+     * Creates a new instance based on a checksum stream, the local file path
+     * and a last modified data.
+     *
+     * @param in checksum stream
+     * @param path path to file
+     * @param lastModified last time the file was modified
+     */
+    PreprocessingInputStream(final DigestInputStream in, final Path path,
+                             final Instant lastModified) {
         super(in);
         this.digestInputStream = in;
         this.path = path;
         this.lastModified = lastModified;
     }
 
-    public DigestInputStream getDigestInputStream() {
+    DigestInputStream getDigestInputStream() {
         return digestInputStream;
     }
 
-    public Path getPath() {
+    Path getPath() {
         return path;
     }
 
-    public Instant getLastModified() {
+    Instant getLastModified() {
         return lastModified;
     }
 
-    public long getSize() {
+    long getSize() {
         return path.toFile().length();
     }
 }

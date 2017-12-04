@@ -19,6 +19,9 @@ class UploaderThreadFactory implements ThreadFactory {
             new ThreadGroup("uploaders");
     private AtomicInteger threadCounter = new AtomicInteger();
 
+    /**
+     * Creates new instance.
+     */
     UploaderThreadFactory() {
     }
 

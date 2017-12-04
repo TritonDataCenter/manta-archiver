@@ -12,7 +12,14 @@ import java.nio.file.Path;
 /**
  * Interface representing an object to upload to Manta.
  */
-public interface ObjectUpload {
+interface ObjectUpload {
+    /**
+     * @return path to the original file
+     */
     Path getSourcePath();
+
+    /**
+     * @return true if the object is a directory
+     */
     boolean isDirectory();
 }

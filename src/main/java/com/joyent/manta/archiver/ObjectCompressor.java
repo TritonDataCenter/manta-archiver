@@ -19,7 +19,11 @@ import java.nio.file.Path;
  * Manta.
  */
 public class ObjectCompressor {
+    /**
+     * File extension of compression algorithm used to compress objects.
+     */
     public static final String COMPRESSION_TYPE = CompressorStreamFactory.XZ;
+
     private static final CompressorStreamFactory COMPRESSOR_STREAM_FACTORY =
             new CompressorStreamFactory();
 
