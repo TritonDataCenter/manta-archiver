@@ -7,11 +7,13 @@
  */
 package com.joyent.manta.archiver;
 
+import java.nio.file.Path;
+
 /**
  * A {@link TransferClient} implementation used for testing that outputs
  * files transferred to STDOUT.
  */
-public class EchoTransferClient implements TransferClient {
+class EchoTransferClient implements TransferClient {
     @Override
     public void mkdirp(final String path, final DirectoryUpload upload) {
         System.out.println("mkdirp: " + upload.getSourcePath() + " --> " + path);
@@ -25,6 +27,11 @@ public class EchoTransferClient implements TransferClient {
     @Override
     public int getMaximumConcurrentUploads() {
         return 12;
+    }
+
+    @Override
+    public String convertLocalPathToRemotePath(final ObjectUpload upload, final Path localRoot) {
+        return "/remote/" + localRoot;
     }
 
     @Override

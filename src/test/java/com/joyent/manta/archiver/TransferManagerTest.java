@@ -15,10 +15,6 @@ import org.testng.annotations.Test;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-
 @Test
 public class TransferManagerTest {
     public void canUploadAll() {
@@ -33,19 +29,6 @@ public class TransferManagerTest {
         }
     }
 
-    public void canConvertFromUnixFilePathToMantaPath() {
-        ObjectUpload upload = mock(ObjectUpload.class);
-        when(upload.getSourcePath()).thenReturn(Paths.get("/var/app/bar"));
-        assertMantaPathConversionEquals(upload, "app/bar.xz");
-    }
-
-    public void canConvertFromUnixDirectoryPathToMantaPath() {
-        ObjectUpload upload = mock(ObjectUpload.class);
-        when(upload.isDirectory()).thenReturn(true);
-        when(upload.getSourcePath()).thenReturn(Paths.get("/var/app/bar"));
-        assertMantaPathConversionEquals(upload, "app/bar/");
-    }
-
     public void canTransferToManta() {
         final ConfigContext config = new SystemSettingsConfigContext();
         final MantaClient mantaClient = new MantaClient(config);
@@ -57,19 +40,6 @@ public class TransferManagerTest {
             manager.uploadAll();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    private void assertMantaPathConversionEquals(final ObjectUpload upload,
-                                                 final String expectedRelativePath) {
-        final TransferClient client = new EchoTransferClient();
-        final Path root = Paths.get("/var");
-        final String mantaRoot = "/username/stor/backup";
-
-        try (TransferManager manager = new TransferManager(client, root, mantaRoot)) {
-            String actual = manager.convertToMantaPath(upload);
-            String expected = mantaRoot + MantaClient.SEPARATOR + expectedRelativePath;
-            assertEquals(actual, expected);
         }
     }
 }

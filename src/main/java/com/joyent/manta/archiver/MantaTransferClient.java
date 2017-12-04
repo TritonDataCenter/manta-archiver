@@ -199,14 +199,15 @@ class MantaTransferClient implements TransferClient {
 
         String filename = "";
 
-        for (int parts = 0; itr.hasNext(); parts++) {
+        while (itr.hasNext()) {
             filename = itr.next().getFileName().toString();
 
             if (filename.isEmpty()) {
                 continue;
             }
 
-            if (parts > 0) {
+            // Add a separator if it didn't exist
+            if (!filename.startsWith(MantaClient.SEPARATOR)) {
                 builder.append(MantaClient.SEPARATOR);
             }
 
