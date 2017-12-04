@@ -83,7 +83,8 @@ public class TransferManager implements AutoCloseable {
                 noOfinitialAsyncObjectsToProcess);
         final TransferQueue<ObjectUpload> queue = loader.getQueue();
 
-        final long noOfObjectToUpload = loader.uploadDirectoryContents(localRoot);
+        final TotalTransferDetails transferDetails = loader.uploadDirectoryContents(localRoot);
+        final long noOfObjectToUpload = transferDetails.numberOfFiles;
 
         if (noOfObjectToUpload < 1) {
             return;

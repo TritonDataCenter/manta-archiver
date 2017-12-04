@@ -227,12 +227,29 @@ class ObjectUploadQueueLoader {
      * upload queue.
      *
      * @param root local working directory
-     * @return total number of objects to upload
+     * @return value object containing details about the transfer
      */
-    long uploadDirectoryContents(final Path root) {
-        return directoryContentsStream(root)
-                .map(p -> executor.submit(() -> addObjectToQueue(p)))
-                .count();
+    TotalTransferDetails uploadDirectoryContents(final Path root) {
+        final TotalTransferDetails transferDetails = new TotalTransferDetails();
+
+        directoryContentsStream(root)
+                .forEach(p -> {
+                    final File file = p.toFile();
+                    final long size;
+
+                    if (file.isDirectory()) {
+                        size = 0L;
+                    } else {
+                        size = file.length();
+                    }
+
+                    transferDetails.numberOfBytes += size;
+                    transferDetails.numberOfFiles++;
+
+                    executor.submit(() -> addObjectToQueue(p));
+                });
+
+        return transferDetails;
     }
 
     /**
