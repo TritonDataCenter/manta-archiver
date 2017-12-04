@@ -9,12 +9,12 @@ package com.joyent.manta.archiver;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.TimeUnit;
 
 import static org.testng.Assert.assertEquals;
@@ -34,26 +34,37 @@ public class ObjectUploadQueueLoaderTest {
     }
 
     public void canProcessDirectory() {
-        ForkJoinPool executor = new ForkJoinPool();
+        ForkJoinPool executor = new ForkJoinPool(ForkJoinPool.getCommonPoolParallelism(),
+                ForkJoinPool.defaultForkJoinWorkerThreadFactory,
+                new LoggingUncaughtExceptionHandler("UnitTestForkJoinPool"),
+                true);
         ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(executor,10);
         Path root = Paths.get("/opt/duck");
 
-        ForkJoinTask<?> task = executor.submit(() -> loader.uploadDirectoryContents(root));
+        TotalTransferDetails transferDetails = loader.uploadDirectoryContents(root);
+        long numberTransferred = 0L;
+        long totalBytesTransferred = 0L;
 
         try {
-            while (!task.isDone()) {
+            while (numberTransferred < transferDetails.numberOfFiles) {
                 final ObjectUpload upload = loader.getQueue().poll(1, TimeUnit.SECONDS);
 
-                if (upload == null) {
-                    continue;
+                if (upload != null) {
+                    numberTransferred++;
+                    if (!upload.isDirectory()) {
+                        totalBytesTransferred += upload.getSourcePath().toFile().length();
+                    }
                 }
-
-                LOG.debug("Transferred from queue: {}", upload);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
             executor.shutdownNow();
         }
+
+        Assert.assertEquals(numberTransferred, transferDetails.numberOfFiles,
+                "Number of actual files transferred doesn't equal the number enqueued");
+        Assert.assertEquals(totalBytesTransferred, transferDetails.numberOfBytes,
+                "Number of bytes transferred doesn't equal the number enqueued");
     }
 }

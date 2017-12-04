@@ -204,10 +204,22 @@ class ObjectUploadQueueLoader {
                 return;
             }
 
-            PreprocessingInputStream in = readPath(path);
-            FileUpload fileUpload = buildFileToUpload(in); // in is closed here
+            final PreprocessingInputStream in = readPath(path);
 
-            LOG.debug("Finished compressing [{}]", fileUpload.getSourcePath());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Started compressing [{}] [{} bytes]",
+                        path, FileUtils.byteCountToDisplaySize(path.toFile().length()));
+            }
+
+            final FileUpload fileUpload = buildFileToUpload(in); // in is closed here
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Finished compressing [{}] [{} -> {} {}]",
+                        fileUpload.getSourcePath(),
+                        FileUtils.byteCountToDisplaySize(fileUpload.getUncompressedSize()),
+                        FileUtils.byteCountToDisplaySize(fileUpload.getCompressedSize()),
+                        fileUpload.getCompressionPercentage());
+            }
 
             if (preloadedCount.getAndIncrement() > queuePreloadSize) {
                 queue.transfer(fileUpload);
@@ -229,6 +241,7 @@ class ObjectUploadQueueLoader {
      * @param root local working directory
      * @return value object containing details about the transfer
      */
+    @SuppressWarnings("FutureReturnValueIgnored")
     TotalTransferDetails uploadDirectoryContents(final Path root) {
         final TotalTransferDetails transferDetails = new TotalTransferDetails();
 

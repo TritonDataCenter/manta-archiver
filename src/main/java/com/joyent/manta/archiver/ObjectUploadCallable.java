@@ -69,7 +69,7 @@ class ObjectUploadCallable implements Callable<Void> {
                 try {
                     uploadObject(upload);
                 } catch (RuntimeException e) {
-                    LOG.error("Error uploading file. Adding file back to the queue");
+                    LOG.error("Error uploading file. Adding file back to the queue", e);
                     queue.put(upload);
                     continue;
                 }
