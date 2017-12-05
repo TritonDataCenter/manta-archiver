@@ -11,6 +11,7 @@ package com.joyent.manta.archiver;
  * Value object containing details about the total number of files and total
  * number of bytes to transfer.
  */
+@SuppressWarnings("VisibilityModifier")
 class TotalTransferDetails {
     long numberOfFiles = 0L;
     long numberOfBytes = 0L;

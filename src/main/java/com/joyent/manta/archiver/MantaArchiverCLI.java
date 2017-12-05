@@ -343,6 +343,7 @@ public class MantaArchiverCLI {
             header = "Uploads a directory to Manta",
             description = "Uploads a local directory to a remote directory in Manta.")
     public static class Upload extends MantaSubCommand {
+        private static final int EXPECT_CONTINUE_DEFAULT_TIMEOUT = 3000;
         @CommandLine.Parameters(paramLabel = "local-directory",
                 index = "0", description = "directory to upload files from")
         private String localDirectory;
@@ -367,7 +368,7 @@ public class MantaArchiverCLI {
             ConfigContext config = new ChainedConfigContext(new DefaultsConfigContext(),
                     new EnvVarConfigContext(),
                     new MapConfigContext(System.getProperties()),
-                    new StandardConfigContext().setExpectContinueTimeout(3000));
+                    new StandardConfigContext().setExpectContinueTimeout(EXPECT_CONTINUE_DEFAULT_TIMEOUT));
             MantaClient mantaClient = new MantaClient(config);
             MantaTransferClient mantaTransferClient = new MantaTransferClient(
                     mantaClient, mantaDirectory);
