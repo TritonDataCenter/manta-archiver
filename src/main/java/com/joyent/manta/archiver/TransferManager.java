@@ -8,6 +8,9 @@
 package com.joyent.manta.archiver;
 
 import com.joyent.manta.client.MantaClient;
+import me.tongfei.progressbar.ProgressBar;
+import me.tongfei.progressbar.ProgressBarStyle;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,13 +93,32 @@ public class TransferManager implements AutoCloseable {
             return;
         }
 
+        System.err.println("Maven Archiver");
+        System.err.println();
+
+        System.err.printf("Bulk upload to Manta : [%s] --> [%s]%s",
+                localRoot, remoteRoot, System.lineSeparator());
+        System.err.printf("Total files to upload: %d%s", transferDetails.numberOfFiles,
+                System.lineSeparator());
+        System.err.printf("Total size to upload : %s (%d)%s",
+                FileUtils.byteCountToDisplaySize(transferDetails.numberOfBytes),
+                transferDetails.numberOfBytes, System.lineSeparator());
+
+        System.err.println();
+
+        final String uploadMsg = "Uploading";
+        final ProgressBar pb = new ProgressBar(uploadMsg,
+                transferDetails.numberOfBytes, ProgressBarStyle.ASCII);
+
         final AtomicLong totalUploads = new AtomicLong();
         final CountDownLatch latch = new CountDownLatch(concurrentUploaders);
         final Callable<Void> uploader = new ObjectUploadCallable(totalUploads,
-                latch, queue, noOfObjectToUpload, client, localRoot);
+                latch, queue, noOfObjectToUpload, client, localRoot, pb);
 
         final List<Callable<Void>> uploaders = Stream.generate(() -> uploader)
                 .limit(concurrentUploaders).collect(Collectors.toList());
+
+        pb.start();
         uploaderExecutor.invokeAll(uploaders);
 
         // This is where we block waiting for the uploaders to finish
@@ -108,6 +130,7 @@ public class TransferManager implements AutoCloseable {
         }
 
         shutdownUploads(uploaderExecutor);
+        pb.stop();
     }
 
     @SuppressWarnings("EmptyStatement")

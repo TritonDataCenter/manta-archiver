@@ -69,6 +69,7 @@
         <dependency.commons-compress.version>1.14</dependency.commons-compress.version>
         <dependency.commons-math.version>3.6.1</dependency.commons-math.version>
         <dependency.xz-version>1.6</dependency.xz-version>
+        <dependency.progressbar.version>0.5.5</dependency.progressbar.version>
         <dependency.logback.version>1.2.3</dependency.logback.version>
         <dependency.jcl-over-slf4j.version>1.7.25</dependency.jcl-over-slf4j.version>
         <!-- Test dependency versions -->
@@ -134,10 +135,15 @@
         </dependency>
 
         <dependency>
+            <groupId>me.tongfei</groupId>
+            <artifactId>progressbar</artifactId>
+            <version>${dependency.progressbar.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
             <version>${dependency.logback.version}</version>
-            <scope>test</scope>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>

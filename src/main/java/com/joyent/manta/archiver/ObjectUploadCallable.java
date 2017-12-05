@@ -7,6 +7,8 @@
  */
 package com.joyent.manta.archiver;
 
+import me.tongfei.progressbar.ProgressBar;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +33,7 @@ class ObjectUploadCallable implements Callable<Void> {
     private final long noOfObjectToUpload;
     private final TransferClient client;
     private final Path localRoot;
+    private final ProgressBar pb;
 
     /**
      * Creates a new instance.
@@ -41,19 +44,22 @@ class ObjectUploadCallable implements Callable<Void> {
      * @param noOfObjectToUpload total number of objects to upload
      * @param client transfer client used to upload objects
      * @param localRoot local working directory
+     * @param pb reference to progress bar to update
      */
     ObjectUploadCallable(final AtomicLong totalUploads,
                          final CountDownLatch latch,
                          final TransferQueue<ObjectUpload> queue,
                          final long noOfObjectToUpload,
                          final TransferClient client,
-                         final Path localRoot) {
+                         final Path localRoot,
+                         final ProgressBar pb) {
         this.totalUploads = totalUploads;
         this.latch = latch;
         this.queue = queue;
         this.noOfObjectToUpload = noOfObjectToUpload;
         this.client = client;
         this.localRoot = localRoot;
+        this.pb = pb;
     }
 
     @Override
@@ -119,11 +125,32 @@ class ObjectUploadCallable implements Callable<Void> {
     void uploadFile(final FileUpload upload) {
         String mantaPath = client.convertLocalPathToRemotePath(upload, localRoot);
 
-        client.put(mantaPath, upload);
+        try {
+            client.put(mantaPath, upload);
+        } catch (RuntimeException e) {
+            String msg = String.format("Error uploading file [%s] adding file "
+                    + "back to the queue", upload.getSourcePath());
+            LOG.warn(msg, e);
+
+            try {
+                queue.put(upload);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+
+            return;
+        }
 
         // Clean up the temp upload file so we don't leave it lingering
         try {
             Files.deleteIfExists(upload.getTempPath());
+            pb.stepBy(upload.getUncompressedSize());
+
+            if (LOG.isInfoEnabled()) {
+                LOG.info("Upload [{} {}] has completed",
+                        upload.getSourcePath(),
+                        FileUtils.byteCountToDisplaySize(upload.getUncompressedSize()));
+            }
         } catch (IOException e) {
             String msg = String.format("Unable to delete [%s]",
                     upload.getTempPath());
