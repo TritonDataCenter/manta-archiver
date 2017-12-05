@@ -37,6 +37,9 @@ import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
+import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.CommandLogLevel.DEBUG;
+import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.CommandLogLevel.INFO;
+
 @CommandLine.Command(name = "java-manta-cli", sortOptions = false,
         header = {
                 "@|cyan                 .     .             |@",
@@ -123,13 +126,12 @@ public class MantaArchiverCLI {
         // Wire log level is way too much information for even debug mode
         Logger wire = (Logger) LoggerFactory.getLogger("org.apache.http.wire");
 
-        if (subcommand.logLevel.equals(MantaSubCommand.CommandLogLevel.DEBUG)
-            || subcommand.logLevel.equals(MantaSubCommand.CommandLogLevel.INFO)) {
+        if (subcommand.logLevel != null
+                && (subcommand.logLevel.equals(DEBUG) || subcommand.logLevel.equals(INFO))) {
             wire.setLevel(Level.INFO);
         } else {
             wire.setLevel(Level.WARN);
         }
-
 
         @SuppressWarnings("unchecked")
         LoggerContext lc = (LoggerContext)LoggerFactory.getILoggerFactory();
