@@ -68,6 +68,15 @@ import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.Command
 // Documented through CLI annotations
 @SuppressWarnings({"checkstyle:javadocmethod", "checkstyle:javadoctype", "checkstyle:javadocvariable"})
 public class MantaArchiverCLI {
+    static {
+        // We reference the following classes so they get picked up in the uber jar
+        @SuppressWarnings("unused")
+        Class<?>[]  clasess = new Class<?>[] {
+                com.fasterxml.jackson.databind.ext.Java7Support.class,
+                com.fasterxml.jackson.databind.ext.Java7SupportImpl.class
+        };
+    }
+
     @CommandLine.Option(names = {"-v", "--version"}, help = true)
     private boolean isVersionRequested;
 

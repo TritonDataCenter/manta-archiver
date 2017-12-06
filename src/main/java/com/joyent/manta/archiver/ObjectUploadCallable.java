@@ -83,7 +83,7 @@ class ObjectUploadCallable implements Callable<Void> {
                 /* After an upload is successful we want to know if we
                  * have uploaded all of the objects that we can upload
                  * because this will let us know when to exit the loop. */
-                if (totalUploads.incrementAndGet() == noOfObjectToUpload) {
+                if (totalUploads.incrementAndGet() >= noOfObjectToUpload) {
                     break;
                 }
             }
@@ -126,6 +126,7 @@ class ObjectUploadCallable implements Callable<Void> {
         String mantaPath = client.convertLocalPathToRemotePath(upload, localRoot);
 
         try {
+            upload.incrementUploadAttempts();
             client.put(mantaPath, upload);
         } catch (RuntimeException e) {
             String msg = String.format("Error uploading file [%s] adding file "

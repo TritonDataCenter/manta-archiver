@@ -13,6 +13,7 @@ import org.bouncycastle.util.encoders.Hex;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Class that provides properties about a file that has been compressed and
@@ -25,6 +26,7 @@ class FileUpload implements ObjectUpload {
     private final Instant lastModified;
     private final long uncompressedSize;
     private final long compressedSize;
+    private AtomicInteger uploadAttempts = new AtomicInteger(0);
 
     /**
      * Creates a new instance of a file object.
@@ -77,6 +79,17 @@ class FileUpload implements ObjectUpload {
         return compressedSize;
     }
 
+    int getUploadAttempts() {
+        return uploadAttempts.get();
+    }
+
+    /**
+     * Increments the number of times that this upload has been sent.
+     */
+    void incrementUploadAttempts() {
+        uploadAttempts.incrementAndGet();
+    }
+
     /**
      * @return percentage in which the file was compressed from the original size
      */
@@ -96,6 +109,7 @@ class FileUpload implements ObjectUpload {
                 .append("compressionPercentage", getCompressionPercentage())
                 .append("uncompressedSize", uncompressedSize)
                 .append("compressedSize", compressedSize)
+                .append("uploadAttempts", getUploadAttempts())
                 .toString();
     }
 }

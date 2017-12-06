@@ -121,6 +121,16 @@ class MantaTransferClient implements TransferClient {
         final File file = upload.getTempPath().toFile();
         final String base64Checksum = Base64.encodeBase64String(upload.getChecksum());
 
+        if (!file.exists()) {
+            String msg = String.format("Something went wrong. The file [%s] is "
+                    + "no longer available for upload. Please make sure that "
+                    + "there is no process deleting temp files. Upload details: %s%s",
+                    file.getAbsolutePath(),
+                    upload, System.lineSeparator());
+            System.err.println(msg);
+            System.exit(1);
+        }
+
         try {
             if (!dirCache.contains(dir)) {
                 LOG.debug("Parent directory is already not in cache [{}] for file", dir, path);
@@ -222,7 +232,7 @@ class MantaTransferClient implements TransferClient {
             builder.append(".").append(ObjectCompressor.COMPRESSION_TYPE);
         }
 
-        return builder.toString();
+        return FilenameUtils.normalize(builder.toString(), true);
     }
 
     @Override

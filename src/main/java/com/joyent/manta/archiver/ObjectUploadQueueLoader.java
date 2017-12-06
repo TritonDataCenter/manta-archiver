@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TransferQueue;
@@ -139,6 +140,13 @@ class ObjectUploadQueueLoader {
         Path subPath = Paths.get(path + "." + ObjectCompressor.COMPRESSION_TYPE);
         Path tempPath = appendPaths(TEMP_PATH, subPath);
 
+        if (tempPath.toFile().exists()) {
+            Path changedPath = Paths.get(tempPath.getFileName() + "-" + UUID.randomUUID());
+            LOG.warn("Avoiding overwrite of path [{}] by changing file name to [{}]",
+                    tempPath, changedPath);
+            tempPath = changedPath;
+        }
+
         try {
             OutputStream fileOut = Files.newOutputStream(tempPath,
                     StandardOpenOption.CREATE, StandardOpenOption.WRITE);
@@ -247,7 +255,7 @@ class ObjectUploadQueueLoader {
 
         directoryContentsStream(root)
                 .forEach(p -> {
-                    final File file = p.toFile();
+                    final File file = p.toFile().getAbsoluteFile();
                     final long size;
 
                     if (file.isDirectory()) {
