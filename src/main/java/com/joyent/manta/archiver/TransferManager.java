@@ -16,12 +16,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,6 +37,8 @@ public class TransferManager implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(TransferManager.class);
 
     private static final int EXECUTOR_SHUTDOWN_WAIT_SECS = 5;
+
+    private static final int WAIT_MILLIS_FOR_COMPLETION_CHECK = 1000;
 
     private final ForkJoinPool loaderPool = new ForkJoinPool(
             ForkJoinPool.getCommonPoolParallelism(),
@@ -111,19 +114,30 @@ public class TransferManager implements AutoCloseable {
                 transferDetails.numberOfBytes, ProgressBarStyle.ASCII);
 
         final AtomicLong totalUploads = new AtomicLong();
-        final CountDownLatch latch = new CountDownLatch(concurrentUploaders);
-        final Callable<Void> uploader = new ObjectUploadCallable(totalUploads,
-                latch, queue, noOfObjectToUpload, client, localRoot, pb);
+        final Callable<Long> uploader = new ObjectUploadCallable(totalUploads,
+                queue, noOfObjectToUpload, client, localRoot, pb);
 
-        final List<Callable<Void>> uploaders = Stream.generate(() -> uploader)
+        final List<Callable<Long>> uploaders = Stream.generate(() -> uploader)
                 .limit(concurrentUploaders).collect(Collectors.toList());
 
         pb.start();
-        uploaderExecutor.invokeAll(uploaders);
+
+        final List<Future<Long>> futures = uploaders.stream()
+                .map(uploaderExecutor::submit).collect(Collectors.toList());
+
+        while (!futures.stream().allMatch(Future::isDone)) {
+            Thread.sleep(WAIT_MILLIS_FOR_COMPLETION_CHECK);
+        }
+        LOG.debug("All futures have completed");
+
+        if (LOG.isDebugEnabled()) {
+            final long totalProcessed = sumOfAllFilesUploaded(futures);
+            LOG.debug("Total actually processed: {}", totalProcessed);
+        }
 
         // This is where we block waiting for the uploaders to finish
         while (totalUploads.get() < transferDetails.numberOfFiles) {
-            latch.await(1, TimeUnit.SECONDS);
+            Thread.sleep(WAIT_MILLIS_FOR_COMPLETION_CHECK);
         }
 
         if (LOG.isInfoEnabled()) {
@@ -133,6 +147,16 @@ public class TransferManager implements AutoCloseable {
 
         shutdownUploads(uploaderExecutor);
         pb.stop();
+    }
+
+    private static long sumOfAllFilesUploaded(final Collection<Future<Long>> futures) {
+        return futures.stream().map(f -> {
+            try {
+                return f.get();
+            } catch (Exception e) {
+                throw new FileProcessingException(e);
+            }
+        }).mapToLong(Long::longValue).sum();
     }
 
     @SuppressWarnings("EmptyStatement")
@@ -154,16 +178,5 @@ public class TransferManager implements AutoCloseable {
 
         LOG.debug("Shutting down object compression thread pool");
         loaderPool.shutdown();
-
-        try {
-            while (!loaderPool.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return;
-        }
-
-        if (!loaderPool.isShutdown()) {
-            loaderPool.shutdownNow();
-        }
     }
 }

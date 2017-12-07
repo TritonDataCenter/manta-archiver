@@ -20,6 +20,7 @@ import org.apache.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -27,6 +28,9 @@ import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME;
 
@@ -42,18 +46,27 @@ class MantaTransferClient implements TransferClient {
     private Set<String> dirCache = Collections.newSetFromMap(
             new LRUMap<>(DIRECTORY_CACHE_SIZE));
 
-    private MantaClient client;
+    private final Supplier<MantaClient> clientSupplier;
+    private final AtomicReference<MantaClient> clientRef;
     private final String mantaRoot;
 
     /**
      * Creates a new instance based on the specified Manta client and the
      * remote working directory.
      *
-     * @param client Manta client used to transfer objects to Manta
+     * @param clientSupplier Manta client supplier that provides configured MantaClient instances
      * @param mantaRoot remote working directory
      */
-    MantaTransferClient(final MantaClient client, final String mantaRoot) {
-        this.client = client;
+    MantaTransferClient(final Supplier<MantaClient> clientSupplier, final String mantaRoot) {
+        this.clientSupplier = clientSupplier;
+
+        // A null supplier is only ever valid when testing
+        if (clientSupplier == null) {
+            this.clientRef = null;
+        } else {
+            this.clientRef = new AtomicReference<>(clientSupplier.get());
+        }
+
         this.mantaRoot = mantaRoot;
 
         populateDirectoryCache();
@@ -76,7 +89,7 @@ class MantaTransferClient implements TransferClient {
         }
 
         try {
-            client.putDirectory(path, true);
+            clientRef.get().putDirectory(path, true);
         } catch (IOException e) {
             String msg = "Unable to create directory";
             TransferClientException tce = new TransferClientException(msg, e);
@@ -134,7 +147,7 @@ class MantaTransferClient implements TransferClient {
         try {
             if (!dirCache.contains(dir)) {
                 LOG.debug("Parent directory is already not in cache [{}] for file", dir, path);
-                client.putDirectory(dir, true);
+                clientRef.get().putDirectory(dir, true);
             }
 
             final String httpLastModified = RFC_1123_DATE_TIME.format(
@@ -166,7 +179,26 @@ class MantaTransferClient implements TransferClient {
             metadata.put("m-original-md5", base64Checksum);
 
             LOG.debug("Uploading file [{}] --> [{}]", upload.getSourcePath(), path);
-            return client.put(path, file, headers, metadata);
+            return clientRef.get().put(path, file, headers, metadata);
+        } catch (SSLException e) {
+            /* When we start getting SSL connections, there is no good route to
+             * recovery other than shutting down the client and reloading it. We asynchronously
+             * close the old client in order for the connections to clean up without blocking
+             * continuing operations. */
+            final MantaClient oldClient = clientRef.getAndSet(clientSupplier.get());
+            Executors.newSingleThreadExecutor().submit(() -> {
+                Thread.UncaughtExceptionHandler handler = new LoggingUncaughtExceptionHandler(
+                        "OldMantaClientCloser");
+                Thread.currentThread().setUncaughtExceptionHandler(handler);
+                oldClient.close();
+            });
+
+            String msg = "SSL error encountered. Shutting down the current Manta client and "
+                    + "creating a new client in order to attempt to resume operations";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("upload", upload);
+            tce.setContextValue("mantaPath", path);
+            throw tce;
         } catch (IOException e) {
             if (e instanceof MantaClientHttpResponseException) {
                 throw (MantaClientHttpResponseException)e;
@@ -182,7 +214,7 @@ class MantaTransferClient implements TransferClient {
 
     private MantaObjectResponse checkForRemoteFile(final String path) throws IOException {
         try {
-            return client.head(path);
+            return clientRef.get().head(path);
         } catch (MantaClientHttpResponseException e) {
             if (e.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
                 return null;
@@ -194,7 +226,7 @@ class MantaTransferClient implements TransferClient {
 
     @Override
     public int getMaximumConcurrentUploads() {
-        return this.client.getContext().getMaximumConnections();
+        return this.clientRef.get().getContext().getMaximumConnections();
     }
 
     @Override
@@ -237,6 +269,6 @@ class MantaTransferClient implements TransferClient {
 
     @Override
     public void close() {
-        client.close();
+        clientRef.get().close();
     }
 }

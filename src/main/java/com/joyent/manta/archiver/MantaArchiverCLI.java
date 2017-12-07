@@ -18,12 +18,7 @@ import ch.qos.logback.core.FileAppender;
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.client.crypto.SecretKeyUtils;
-import com.joyent.manta.config.ChainedConfigContext;
 import com.joyent.manta.config.ConfigContext;
-import com.joyent.manta.config.DefaultsConfigContext;
-import com.joyent.manta.config.EnvVarConfigContext;
-import com.joyent.manta.config.MapConfigContext;
-import com.joyent.manta.config.StandardConfigContext;
 import com.joyent.manta.util.MantaVersion;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -68,6 +63,9 @@ import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.Command
 // Documented through CLI annotations
 @SuppressWarnings({"checkstyle:javadocmethod", "checkstyle:javadoctype", "checkstyle:javadocvariable"})
 public class MantaArchiverCLI {
+    private static final MantaClientSupplier MANTA_CLIENT_SUPPLIER =
+            new MantaClientSupplier();
+
     static {
         // We reference the following classes so they get picked up in the uber jar
         @SuppressWarnings("unused")
@@ -216,18 +214,6 @@ public class MantaArchiverCLI {
         private LogDestination logDestination;
 
         public abstract void run();
-
-        /**
-         * Builds a new {@link ConfigContext} instance based on defaults and
-         * environment variables.
-         *
-         * @return chained configuration context object
-         */
-        protected ConfigContext buildConfig() {
-            return new ChainedConfigContext(new DefaultsConfigContext(),
-                    new EnvVarConfigContext(),
-                    new MapConfigContext(System.getProperties()));
-        }
     }
 
     @CommandLine.Command(name = "connect-test",
@@ -240,13 +226,13 @@ public class MantaArchiverCLI {
         public void run() {
             final StringBuilder b = new StringBuilder();
 
-            b.append("Creating connection configuration").append(BR);
-            ConfigContext config = buildConfig();
-            b.append(INDENT).append(ConfigContext.toString(config)).append(BR);
-
             b.append("Creating new connection object").append(BR);
-            try (MantaClient client = new MantaClient(config)) {
+            try (MantaClient client = MANTA_CLIENT_SUPPLIER.get()) {
                 b.append(INDENT).append(client).append(BR);
+
+                b.append("Connection configuration").append(BR);
+                ConfigContext config = client.getContext();
+                b.append(INDENT).append(ConfigContext.toString(config)).append(BR);
 
                 String homeDirPath = config.getMantaHomeDirectory();
                 b.append("Attempting HEAD request to: ").append(homeDirPath).append(BR);
@@ -354,7 +340,7 @@ public class MantaArchiverCLI {
             header = "Uploads a directory to Manta",
             description = "Uploads a local directory to a remote directory in Manta.")
     public static class Upload extends MantaSubCommand {
-        private static final int EXPECT_CONTINUE_DEFAULT_TIMEOUT = 3000;
+
         @CommandLine.Parameters(paramLabel = "local-directory",
                 index = "0", description = "directory to upload files from")
         private String localDirectory;
@@ -376,13 +362,8 @@ public class MantaArchiverCLI {
                 System.exit(1);
             }
 
-            ConfigContext config = new ChainedConfigContext(new DefaultsConfigContext(),
-                    new EnvVarConfigContext(),
-                    new MapConfigContext(System.getProperties()),
-                    new StandardConfigContext().setExpectContinueTimeout(EXPECT_CONTINUE_DEFAULT_TIMEOUT));
-            MantaClient mantaClient = new MantaClient(config);
             MantaTransferClient mantaTransferClient = new MantaTransferClient(
-                    mantaClient, mantaDirectory);
+                    MANTA_CLIENT_SUPPLIER, mantaDirectory);
 
             try (TransferManager manager = new TransferManager(mantaTransferClient,
                     localRoot, mantaDirectory)) {

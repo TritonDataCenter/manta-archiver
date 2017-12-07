@@ -95,7 +95,7 @@ class FileUpload implements ObjectUpload {
      */
     String getCompressionPercentage() {
         final double ratio = (double)compressedSize / (double)uncompressedSize;
-        final double percentage = ratio * 100;
+        final double percentage = 100 - (ratio * 100);
         return Precision.round(percentage, 1) + "%";
     }
 

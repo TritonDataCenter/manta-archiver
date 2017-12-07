@@ -12,10 +12,30 @@ import org.apache.commons.io.FileUtils;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 final class FakeDirectoryStructureCreator {
+    private static final File TEMPLATE_FAKE_FILE;
+
+    static {
+        try {
+            TEMPLATE_FAKE_FILE = Files.createTempFile(
+                    "maven-archiver-template-", ".binary").toFile();
+
+            FileUtils.forceDeleteOnExit(TEMPLATE_FAKE_FILE);
+
+            try (FileOutputStream out = new FileOutputStream(TEMPLATE_FAKE_FILE)) {
+                for (int z = 0; z < 10_000; z++) {
+                    out.write((byte)0);
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     static void createFakeDirectoriesAndFiles(final Path root) throws IOException {
         int subdirectories = 9;
         int filesPerDirectory = 200;
@@ -26,12 +46,7 @@ final class FakeDirectoryStructureCreator {
             dir.toFile().mkdirs();
 
             for (int y = 0; y < filesPerDirectory; y++) {
-                File file = dir.resolve("file-" + y).toFile();
-                try (FileOutputStream out = new FileOutputStream(file)) {
-                    for (int z = 0; z < 10_000; z++) {
-                        out.write((byte)0);
-                    }
-                }
+                fakeFile(dir.resolve("file-" + y).toFile());
             }
 
             if (i == subdirectories -1) {
@@ -43,7 +58,8 @@ final class FakeDirectoryStructureCreator {
         FileUtils.forceDeleteOnExit(root.toFile());
     }
 
-    public static void main(String[] argv) throws Exception {
-        createFakeDirectoriesAndFiles(Files.createTempDirectory("archiver-"));
+    static File fakeFile(final File file) throws IOException {
+        FileUtils.copyFile(TEMPLATE_FAKE_FILE, file);
+        return file;
     }
 }
