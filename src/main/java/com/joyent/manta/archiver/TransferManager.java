@@ -122,7 +122,9 @@ public class TransferManager implements AutoCloseable {
         uploaderExecutor.invokeAll(uploaders);
 
         // This is where we block waiting for the uploaders to finish
-        latch.await();
+        while (totalUploads.get() < transferDetails.numberOfFiles) {
+            latch.await(1, TimeUnit.SECONDS);
+        }
 
         if (LOG.isInfoEnabled()) {
             LOG.info("All uploads [{}/{}] have completed", totalUploads.get(),

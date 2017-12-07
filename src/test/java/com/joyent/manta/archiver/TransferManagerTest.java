@@ -9,14 +9,18 @@ package com.joyent.manta.archiver;
 
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 @Test
 public class TransferManagerTest {
-    public void canUploadAll() {
+    public void canUploadAll() throws IOException {
         final TransferClient client = new EchoTransferClient();
-        final Path root = Paths.get("/opt/duck");
+        Path root = Files.createTempDirectory("archiver-");
+        FakeDirectoryStructureCreator.createFakeDirectoriesAndFiles(root);
         final String mantaRoot = "/home/username/stor/backup";
 
         try (TransferManager manager = new TransferManager(client, root, mantaRoot)) {
