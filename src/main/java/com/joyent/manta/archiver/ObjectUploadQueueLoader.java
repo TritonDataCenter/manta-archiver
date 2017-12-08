@@ -30,7 +30,6 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 
 import static java.io.File.separator;
 
@@ -106,24 +105,6 @@ class ObjectUploadQueueLoader {
             String msg = "Error reading file from path";
             FileProcessingException fpe = new FileProcessingException(msg, e);
             fpe.setContextValue("path", path);
-
-            throw fpe;
-        }
-    }
-
-    /**
-     * Stream of an entire recursive directory structure for the specified path.
-     *
-     * @param root root to traverse
-     * @return stream of directory contents
-     */
-    Stream<Path> directoryContentsStream(final Path root) {
-        try {
-            return Files.walk(root);
-        } catch (IOException e) {
-            String msg = "Unable to recursively traverse path";
-            FileProcessingException fpe = new FileProcessingException(msg, e);
-            fpe.setContextValue("rootPath", root);
 
             throw fpe;
         }
@@ -253,7 +234,7 @@ class ObjectUploadQueueLoader {
     TotalTransferDetails uploadDirectoryContents(final Path root) {
         final TotalTransferDetails transferDetails = new TotalTransferDetails();
 
-        directoryContentsStream(root)
+        DirectoryUtils.directoryContentsStream(root)
                 .forEach(p -> {
                     final File file = p.toFile().getAbsoluteFile();
                     final long size;

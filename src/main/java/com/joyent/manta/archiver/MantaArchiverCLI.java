@@ -58,7 +58,8 @@ import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.Command
                 MantaArchiverCLI.ConnectTest.class,
                 MantaArchiverCLI.GenerateKey.class,
                 MantaArchiverCLI.ValidateKey.class,
-                MantaArchiverCLI.Upload.class
+                MantaArchiverCLI.Upload.class,
+                MantaArchiverCLI.Verify.class
         })
 // Documented through CLI annotations
 @SuppressWarnings({"checkstyle:javadocmethod", "checkstyle:javadoctype", "checkstyle:javadocvariable"})
@@ -336,20 +337,14 @@ public class MantaArchiverCLI {
         }
     }
 
-    @CommandLine.Command(name = "upload",
-            header = "Uploads a directory to Manta",
-            description = "Uploads a local directory to a remote directory in Manta.")
-    public static class Upload extends MantaSubCommand {
-
-        @CommandLine.Parameters(paramLabel = "local-directory",
-                index = "0", description = "directory to upload files from")
-        private String localDirectory;
-        @CommandLine.Parameters(paramLabel = "manta-directory",
-                index = "1", description = "directory in Manta to upload files to")
-        private String mantaDirectory;
-
-        @Override
-        public void run() {
+    public static abstract class ArchiveSubCommand extends MantaSubCommand {
+        /**
+         * Validates a local directory path.
+         *
+         * @param localDirectory local directory as input by the user
+         * @return Path to local directory
+         */
+        protected Path findLocalPath(final String localDirectory) {
             final Path localRoot = Paths.get(localDirectory);
 
             if (!localRoot.toFile().exists()) {
@@ -362,6 +357,27 @@ public class MantaArchiverCLI {
                 System.exit(1);
             }
 
+            return localRoot;
+        }
+    }
+
+
+    @CommandLine.Command(name = "upload",
+            header = "Uploads a directory to Manta",
+            description = "Uploads a local directory to a remote directory in Manta.")
+    public static class Upload extends ArchiveSubCommand {
+
+        @CommandLine.Parameters(paramLabel = "local-directory",
+                index = "0", description = "directory to upload files from")
+        private String localDirectory;
+        @CommandLine.Parameters(paramLabel = "manta-directory",
+                index = "1", description = "directory in Manta to upload files to")
+        private String mantaDirectory;
+
+        @Override
+        public void run() {
+            final Path localRoot = findLocalPath(localDirectory);
+
             MantaTransferClient mantaTransferClient = new MantaTransferClient(
                     MANTA_CLIENT_SUPPLIER, mantaDirectory);
 
@@ -371,7 +387,37 @@ public class MantaArchiverCLI {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
-                System.err.println("Unrecoverable error upload files to Manta");
+                System.err.println("Unrecoverable error uploading files to Manta");
+                e.printStackTrace(System.err);
+            }
+        }
+    }
+
+    @CommandLine.Command(name = "verify",
+            header = "Verifies the contents of a directory",
+            description = "Verifies a local directory to a remote directory in Manta.")
+    public static class Verify extends ArchiveSubCommand {
+        @CommandLine.Parameters(paramLabel = "local-directory",
+                index = "0", description = "directory to verify files from")
+        private String localDirectory;
+        @CommandLine.Parameters(paramLabel = "manta-directory",
+                index = "1", description = "directory in Manta to verify to")
+        private String mantaDirectory;
+
+        @Override
+        public void run() {
+            final Path localRoot = findLocalPath(localDirectory);
+
+            MantaTransferClient mantaTransferClient = new MantaTransferClient(
+                    MANTA_CLIENT_SUPPLIER, mantaDirectory);
+
+            try (TransferManager manager = new TransferManager(mantaTransferClient,
+                    localRoot)) {
+                manager.uploadAll();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (RuntimeException e) {
+                System.err.println("Unrecoverable error verifying files on Manta");
                 e.printStackTrace(System.err);
             }
         }

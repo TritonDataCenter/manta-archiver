@@ -30,7 +30,8 @@ class EchoTransferClient implements TransferClient {
     }
 
     @Override
-    public String convertLocalPathToRemotePath(final ObjectUpload upload, final Path localRoot) {
+    public String convertLocalPathToRemotePath(final Path sourcePath,
+                                               final Path localRoot) {
         return "/remote/" + localRoot;
     }
 

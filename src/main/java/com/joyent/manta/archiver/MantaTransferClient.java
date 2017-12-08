@@ -208,9 +208,8 @@ class MantaTransferClient implements TransferClient {
     }
 
     @Override
-    public String convertLocalPathToRemotePath(final ObjectUpload upload,
+    public String convertLocalPathToRemotePath(final Path sourcePath,
                                                final Path localRoot) {
-        Path sourcePath = upload.getSourcePath();
         Path subPath = localRoot.relativize(sourcePath);
 
         StringBuilder builder = new StringBuilder(mantaRoot);
@@ -234,11 +233,11 @@ class MantaTransferClient implements TransferClient {
             builder.append(filename);
         }
 
-        if (upload.isDirectory()
-                && !filename.isEmpty()
-                && !filename.endsWith(MantaClient.SEPARATOR)) {
+        final boolean isDirectory = sourcePath.toFile().isDirectory();
+
+        if (isDirectory && !filename.isEmpty() && !filename.endsWith(MantaClient.SEPARATOR)) {
             builder.append(MantaClient.SEPARATOR);
-        } else {
+        } else if (!isDirectory) {
             builder.append(".").append(ObjectCompressor.COMPRESSION_TYPE);
         }
 
@@ -262,7 +261,22 @@ class MantaTransferClient implements TransferClient {
      * @return normalized path
      */
     private String normalize(final String path) {
-        final String mantaHomeDir = this.clientRef.get().getContext().getMantaHomeDirectory();
+        final MantaClient client;
+
+        if (clientRef != null) {
+            client = this.clientRef.get();
+        } else {
+            client = null;
+        }
+
+        final String mantaHomeDir;
+
+        if (client != null) {
+            mantaHomeDir = client.getContext().getMantaHomeDirectory();
+        } else {
+            mantaHomeDir = "";
+        }
+
         final String substitute = substituteHomeDirectory(path, mantaHomeDir);
         final String normalized = FilenameUtils.normalize(substitute, true);
 

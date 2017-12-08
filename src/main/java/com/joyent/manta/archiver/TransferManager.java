@@ -82,7 +82,7 @@ public class TransferManager implements AutoCloseable {
             return;
         }
 
-        System.err.println("Maven Archiver");
+        System.err.println("Maven Archiver - Upload");
         System.err.println();
 
         System.err.printf("Bulk upload to Manta : [%s] --> [%s]%s",
@@ -117,7 +117,7 @@ public class TransferManager implements AutoCloseable {
         LOG.debug("All futures have completed");
 
         if (LOG.isDebugEnabled()) {
-            final long totalProcessed = sumOfAllFilesUploaded(futures);
+            final long totalProcessed = sumOfAllFilesProcessed(futures);
             LOG.debug("Total actually processed: {}", totalProcessed);
         }
 
@@ -135,7 +135,17 @@ public class TransferManager implements AutoCloseable {
         pb.stop();
     }
 
-    private static long sumOfAllFilesUploaded(final Collection<Future<Long>> futures) {
+//    void verifyAll() throws InterruptedException {
+//        System.err.println("Maven Archiver - Verify");
+//        System.err.println();
+//
+//        try (Stream<Path> contents = DirectoryUtils.directoryContentsStream(localRoot)
+//            .map(p -> client.convertLocalPathToRemotePath())) {
+//
+//        }
+//    }
+
+    private static long sumOfAllFilesProcessed(final Collection<Future<Long>> futures) {
         return futures.stream().map(f -> {
             try {
                 return f.get();

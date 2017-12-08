@@ -103,7 +103,8 @@ class ObjectUploadCallable implements Callable<Long> {
      * @param upload directory to create
      */
     void createDirectory(final DirectoryUpload upload) {
-        String mantaDir = client.convertLocalPathToRemotePath(upload, localRoot);
+        final String mantaDir = client.convertLocalPathToRemotePath(
+                upload.getSourcePath(), localRoot);
 
         client.mkdirp(mantaDir, upload);
     }
@@ -113,7 +114,8 @@ class ObjectUploadCallable implements Callable<Long> {
      * @param upload file to upload
      */
     void uploadFile(final FileUpload upload) {
-        String mantaPath = client.convertLocalPathToRemotePath(upload, localRoot);
+        final String mantaPath = client.convertLocalPathToRemotePath(
+                upload.getSourcePath(), localRoot);
 
         upload.incrementUploadAttempts();
         client.put(mantaPath, upload);

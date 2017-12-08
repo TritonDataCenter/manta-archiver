@@ -38,13 +38,12 @@ public interface TransferClient extends AutoCloseable {
     /**
      * Converts a local path to a remote filesystem path.
      *
-     * @param upload object in which the path will be converted
+     * @param sourcePath source path of the object in which the path will be converted
      * @param localRoot local filesystem working directory path
      *
      * @return converted path
      */
-    String convertLocalPathToRemotePath(ObjectUpload upload,
-                                        Path localRoot);
+    String convertLocalPathToRemotePath(Path sourcePath, Path localRoot);
 
     /**
      * @return the base remote path in which files or directories are uploaded to
