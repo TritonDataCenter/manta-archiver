@@ -366,7 +366,7 @@ public class MantaArchiverCLI {
                     MANTA_CLIENT_SUPPLIER, mantaDirectory);
 
             try (TransferManager manager = new TransferManager(mantaTransferClient,
-                    localRoot, mantaDirectory)) {
+                    localRoot)) {
                 manager.uploadAll();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

@@ -13,6 +13,7 @@ import com.joyent.manta.client.MantaMetadata;
 import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.exception.MantaClientHttpResponseException;
 import com.joyent.manta.http.MantaHttpHeaders;
+import com.joyent.manta.util.MantaUtils;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.collections4.map.LRUMap;
 import org.apache.commons.io.FilenameUtils;
@@ -20,7 +21,6 @@ import org.apache.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -28,11 +28,11 @@ import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Set;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME;
+import static java.util.Objects.requireNonNull;
 
 /**
  * {@link TransferClient} implementation that allows for the transfer of files
@@ -46,7 +46,6 @@ class MantaTransferClient implements TransferClient {
     private Set<String> dirCache = Collections.newSetFromMap(
             new LRUMap<>(DIRECTORY_CACHE_SIZE));
 
-    private final Supplier<MantaClient> clientSupplier;
     private final AtomicReference<MantaClient> clientRef;
     private final String mantaRoot;
 
@@ -58,8 +57,6 @@ class MantaTransferClient implements TransferClient {
      * @param mantaRoot remote working directory
      */
     MantaTransferClient(final Supplier<MantaClient> clientSupplier, final String mantaRoot) {
-        this.clientSupplier = clientSupplier;
-
         // A null supplier is only ever valid when testing
         if (clientSupplier == null) {
             this.clientRef = null;
@@ -67,7 +64,7 @@ class MantaTransferClient implements TransferClient {
             this.clientRef = new AtomicReference<>(clientSupplier.get());
         }
 
-        this.mantaRoot = mantaRoot;
+        this.mantaRoot = normalize(mantaRoot);
 
         populateDirectoryCache();
     }
@@ -180,25 +177,6 @@ class MantaTransferClient implements TransferClient {
 
             LOG.debug("Uploading file [{}] --> [{}]", upload.getSourcePath(), path);
             return clientRef.get().put(path, file, headers, metadata);
-        } catch (SSLException e) {
-            /* When we start getting SSL connections, there is no good route to
-             * recovery other than shutting down the client and reloading it. We asynchronously
-             * close the old client in order for the connections to clean up without blocking
-             * continuing operations. */
-            final MantaClient oldClient = clientRef.getAndSet(clientSupplier.get());
-            Executors.newSingleThreadExecutor().submit(() -> {
-                Thread.UncaughtExceptionHandler handler = new LoggingUncaughtExceptionHandler(
-                        "OldMantaClientCloser");
-                Thread.currentThread().setUncaughtExceptionHandler(handler);
-                oldClient.close();
-            });
-
-            String msg = "SSL error encountered. Shutting down the current Manta client and "
-                    + "creating a new client in order to attempt to resume operations";
-            TransferClientException tce = new TransferClientException(msg, e);
-            tce.setContextValue("upload", upload);
-            tce.setContextValue("mantaPath", path);
-            throw tce;
         } catch (IOException e) {
             if (e instanceof MantaClientHttpResponseException) {
                 throw (MantaClientHttpResponseException)e;
@@ -268,7 +246,48 @@ class MantaTransferClient implements TransferClient {
     }
 
     @Override
+    public String getRemotePath() {
+        return this.mantaRoot;
+    }
+
+    @Override
     public void close() {
         clientRef.get().close();
+    }
+
+    /**
+     * Normalizes the directory structure of the remote path provided.
+     *
+     * @param path path to normalize
+     * @return normalized path
+     */
+    private String normalize(final String path) {
+        final String mantaHomeDir = this.clientRef.get().getContext().getMantaHomeDirectory();
+        final String substitute = substituteHomeDirectory(path, mantaHomeDir);
+        final String normalized = FilenameUtils.normalize(substitute, true);
+
+        if (normalized.endsWith(MantaClient.SEPARATOR)) {
+            return normalized;
+        } else {
+            return normalized + MantaClient.SEPARATOR;
+        }
+    }
+
+    /**
+     * Substitutes the actual home directory for ~~ in a given path.
+     *
+     * @param path path to substitute
+     * @param homeDir home directory to replace ~~ with
+     * @return interpolate path
+     */
+    static String substituteHomeDirectory(final String path, final String homeDir) {
+        requireNonNull(path, "Path is null");
+        requireNonNull(homeDir, "Home directory is null");
+
+        if (path.startsWith("~~")) {
+            return MantaUtils.formatPath(homeDir + path.substring(2));
+        } else {
+            return MantaUtils.formatPath(path);
+        }
     }
 }

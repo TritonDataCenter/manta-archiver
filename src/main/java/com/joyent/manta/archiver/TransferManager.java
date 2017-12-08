@@ -7,11 +7,9 @@
  */
 package com.joyent.manta.archiver;
 
-import com.joyent.manta.client.MantaClient;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,28 +46,16 @@ public class TransferManager implements AutoCloseable {
 
     private final TransferClient client;
     private final Path localRoot;
-    private final String remoteRoot;
-
     /**
      * Creates a new instance backed by a transfer client mapped to a remote
      * filesystem root path and a local filesystem root path.
      *
      * @param client client used to transfer files
      * @param localRoot local filesystem working directory
-     * @param remoteRoot remote filesystem working directory
      */
-    public TransferManager(final TransferClient client, final Path localRoot,
-                           final String remoteRoot) {
+    public TransferManager(final TransferClient client, final Path localRoot) {
         this.client = client;
         this.localRoot = localRoot.toAbsolutePath().normalize();
-
-        String normalized = FilenameUtils.normalize(remoteRoot, true);
-
-        if (normalized.endsWith(MantaClient.SEPARATOR)) {
-            this.remoteRoot = normalized;
-        } else {
-            this.remoteRoot = normalized + MantaClient.SEPARATOR;
-        }
     }
 
     /**
@@ -100,7 +86,7 @@ public class TransferManager implements AutoCloseable {
         System.err.println();
 
         System.err.printf("Bulk upload to Manta : [%s] --> [%s]%s",
-                localRoot, remoteRoot, System.lineSeparator());
+                localRoot, client.getRemotePath(), System.lineSeparator());
         System.err.printf("Total files to upload: %d%s", transferDetails.numberOfFiles,
                 System.lineSeparator());
         System.err.printf("Total size to upload : %s (%d)%s",

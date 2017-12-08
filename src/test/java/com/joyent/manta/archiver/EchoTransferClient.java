@@ -35,6 +35,11 @@ class EchoTransferClient implements TransferClient {
     }
 
     @Override
+    public String getRemotePath() {
+        return "/remote/";
+    }
+
+    @Override
     public void close() {
         // Do nothing
     }
