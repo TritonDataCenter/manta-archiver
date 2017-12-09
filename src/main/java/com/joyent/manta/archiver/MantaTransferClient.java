@@ -7,7 +7,6 @@
  */
 package com.joyent.manta.archiver;
 
-
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaMetadata;
 import com.joyent.manta.client.MantaObjectResponse;
@@ -18,6 +17,7 @@ import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.collections4.map.LRUMap;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.http.HttpStatus;
+import org.bouncycastle.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +42,9 @@ class MantaTransferClient implements TransferClient {
     private static final Logger LOG = LoggerFactory.getLogger(MantaTransferClient.class);
 
     private static final int DIRECTORY_CACHE_SIZE = 4096;
+    private static final String UNCOMPRESSED_SIZE_HEADER = "m-uncompressed-size";
+    private static final String ORIGINAL_PATH_HEADER = "m-original-path";
+    private static final String ORIGINAL_MD5_HEADER = "m-original-md5";
 
     private Set<String> dirCache = Collections.newSetFromMap(
             new LRUMap<>(DIRECTORY_CACHE_SIZE));
@@ -171,9 +174,9 @@ class MantaTransferClient implements TransferClient {
             }
 
             final MantaMetadata metadata = new MantaMetadata();
-            metadata.put("m-uncompressed-size", Long.toString(upload.getUncompressedSize()));
-            metadata.put("m-original-path", upload.getSourcePath().toString());
-            metadata.put("m-original-md5", base64Checksum);
+            metadata.put(UNCOMPRESSED_SIZE_HEADER, Long.toString(upload.getUncompressedSize()));
+            metadata.put(ORIGINAL_PATH_HEADER, upload.getSourcePath().toString());
+            metadata.put(ORIGINAL_MD5_HEADER, base64Checksum);
 
             LOG.debug("Uploading file [{}] --> [{}]", upload.getSourcePath(), path);
             return clientRef.get().put(path, file, headers, metadata);
@@ -186,6 +189,81 @@ class MantaTransferClient implements TransferClient {
             TransferClientException tce = new TransferClientException(msg, e);
             tce.setContextValue("upload", upload);
             tce.setContextValue("mantaPath", path);
+            throw tce;
+        }
+    }
+
+    @Override
+    public VerificationResult verifyDirectory(final String remotePath) {
+        try {
+            MantaObjectResponse response = clientRef.get().head(remotePath);
+
+            if (!response.isDirectory()) {
+                return VerificationResult.NOT_DIRECTORY;
+            }
+
+            return VerificationResult.OK;
+        } catch (IOException e) {
+            if (e instanceof MantaClientHttpResponseException) {
+                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
+
+                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    return VerificationResult.NOT_FOUND;
+                }
+            }
+
+            String msg = "Unable to verify directory";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", remotePath);
+            throw tce;
+        }
+    }
+
+    @Override
+    public VerificationResult verifyFile(final String remotePath, final long size,
+            final byte[] checksum) {
+        try {
+            MantaObjectResponse response = clientRef.get().head(remotePath);
+
+            if (response.isDirectory()) {
+                return VerificationResult.NOT_FILE;
+            }
+
+            final String originalSize = response.getHeaderAsString(UNCOMPRESSED_SIZE_HEADER);
+
+            if (originalSize == null) {
+                return VerificationResult.MISSING_HEADERS;
+            }
+
+            if (size != Long.parseLong(originalSize)) {
+                return VerificationResult.WRONG_SIZE;
+            }
+
+            final String md5Base64 = response.getHeaderAsString(ORIGINAL_MD5_HEADER);
+
+            if (md5Base64 == null) {
+                return VerificationResult.MISSING_HEADERS;
+            }
+
+            final byte[] originalMd5 = java.util.Base64.getDecoder().decode(md5Base64);
+
+            if (!Arrays.areEqual(checksum, originalMd5)) {
+                return VerificationResult.CHECKSUM_MISMATCH;
+            }
+
+            return VerificationResult.OK;
+        } catch (IOException e) {
+            if (e instanceof MantaClientHttpResponseException) {
+                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
+
+                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    return VerificationResult.NOT_FOUND;
+                }
+            }
+
+            String msg = "Unable to verify file";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", remotePath);
             throw tce;
         }
     }

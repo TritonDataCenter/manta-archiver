@@ -234,7 +234,7 @@ class ObjectUploadQueueLoader {
     TotalTransferDetails uploadDirectoryContents(final Path root) {
         final TotalTransferDetails transferDetails = new TotalTransferDetails();
 
-        DirectoryUtils.directoryContentsStream(root)
+        LocalFileUtils.directoryContentsStream(root)
                 .forEach(p -> {
                     final File file = p.toFile().getAbsoluteFile();
                     final long size;

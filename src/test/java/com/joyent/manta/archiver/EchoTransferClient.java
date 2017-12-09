@@ -41,6 +41,18 @@ class EchoTransferClient implements TransferClient {
     }
 
     @Override
+    public VerificationResult verifyDirectory(String remotePath)
+    {
+        return null;
+    }
+
+    @Override
+    public VerificationResult verifyFile(String remotePath, long size, byte[] checksum)
+    {
+        return null;
+    }
+
+    @Override
     public void close() {
         // Do nothing
     }

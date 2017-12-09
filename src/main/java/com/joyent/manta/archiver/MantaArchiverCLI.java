@@ -337,7 +337,7 @@ public class MantaArchiverCLI {
         }
     }
 
-    public static abstract class ArchiveSubCommand extends MantaSubCommand {
+    public abstract static class ArchiveSubCommand extends MantaSubCommand {
         /**
          * Validates a local directory path.
          *
@@ -413,7 +413,7 @@ public class MantaArchiverCLI {
 
             try (TransferManager manager = new TransferManager(mantaTransferClient,
                     localRoot)) {
-                manager.uploadAll();
+                manager.verifyAll();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {

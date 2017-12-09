@@ -10,9 +10,11 @@ package com.joyent.manta.archiver;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -23,6 +25,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -135,15 +138,44 @@ public class TransferManager implements AutoCloseable {
         pb.stop();
     }
 
-//    void verifyAll() throws InterruptedException {
-//        System.err.println("Maven Archiver - Verify");
-//        System.err.println();
-//
-//        try (Stream<Path> contents = DirectoryUtils.directoryContentsStream(localRoot)
-//            .map(p -> client.convertLocalPathToRemotePath())) {
-//
-//        }
-//    }
+    /**
+     * Verifies that all of the files in the specified local directory
+     * and subdirectories are identical to the files on Manta.
+     *
+     * @throws InterruptedException thrown when a blocking operation is interrupted
+     */
+    void verifyAll() throws InterruptedException {
+        System.err.println("Maven Archiver - Verify");
+        System.err.println();
+
+        final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
+        final int statusMsgSize = 19;
+
+        final String format = "[%s] %s <-> %s" + System.lineSeparator();
+
+        try (Stream<Path> contents = LocalFileUtils.directoryContentsStream(localRoot)) {
+            contents.forEach(localPath -> {
+                String mantaPath = client.convertLocalPathToRemotePath(localPath, localRoot);
+
+                final VerificationResult result;
+
+                if (localPath.toFile().isDirectory()) {
+                    result = client.verifyDirectory(mantaPath);
+                } else {
+                    final File file = localPath.toFile();
+                    final byte[] checksum = LocalFileUtils.checksum(localPath);
+                    result = client.verifyFile(mantaPath, file.length(), checksum);
+                }
+
+                if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
+                    verificationSuccess.set(false);
+                }
+
+                System.err.printf(format, StringUtils.center(result.toString(), statusMsgSize),
+                        localPath, mantaPath);
+            });
+        }
+    }
 
     private static long sumOfAllFilesProcessed(final Collection<Future<Long>> futures) {
         return futures.stream().map(f -> {

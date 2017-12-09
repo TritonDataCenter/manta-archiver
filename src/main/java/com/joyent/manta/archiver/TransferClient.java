@@ -36,6 +36,24 @@ public interface TransferClient extends AutoCloseable {
     void put(String path, FileUpload upload);
 
     /**
+     * Verifies that the specified directory exists on the remote file system.
+     * @param remotePath path to remote directory
+     * @return enum representing verification status
+     */
+    VerificationResult verifyDirectory(String remotePath);
+
+    /**
+     * Verifies that the specified file exists on the remote file system
+     * and the contents match the file size and specified checksum.
+     *
+     * @param remotePath path to remote file
+     * @param size expected file size
+     * @param checksum expected checksum
+     * @return enum representing verification status
+     */
+    VerificationResult verifyFile(String remotePath, long size, byte[] checksum);
+
+    /**
      * Converts a local path to a remote filesystem path.
      *
      * @param sourcePath source path of the object in which the path will be converted
