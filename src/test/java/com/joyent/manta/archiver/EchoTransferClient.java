@@ -8,12 +8,18 @@
 package com.joyent.manta.archiver;
 
 import java.nio.file.Path;
+import java.util.stream.Stream;
 
 /**
  * A {@link TransferClient} implementation used for testing that outputs
  * files transferred to STDOUT.
  */
 class EchoTransferClient implements TransferClient {
+    @Override
+    public Stream<String> find() {
+        return null;
+    }
+
     @Override
     public void mkdirp(final String path, final DirectoryUpload upload) {
         System.out.println("mkdirp: " + upload.getSourcePath() + " --> " + path);
@@ -41,14 +47,18 @@ class EchoTransferClient implements TransferClient {
     }
 
     @Override
-    public VerificationResult verifyDirectory(String remotePath)
-    {
+    public VerificationResult verifyDirectory(String remotePath) {
         return null;
     }
 
     @Override
-    public VerificationResult verifyFile(String remotePath, long size, byte[] checksum)
-    {
+    public VerificationResult verifyFile(String remotePath, long size, byte[] checksum) {
+        return null;
+    }
+
+
+    @Override
+    public VerificationResult verifyRemoteFile(final String remotePath) {
         return null;
     }
 

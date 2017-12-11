@@ -23,10 +23,18 @@ import static org.testng.Assert.assertEquals;
 @Test
 public class MantaTransferClientTest {
     private static final String MANTA_ROOT = "/username/stor/backup";
-    public void canConvertFromUnixFilePathToMantaPath() {
+
+    public void canConvertFromUnixFilePathToMantaPath() throws IOException {
         ObjectUpload upload = mock(ObjectUpload.class);
-        when(upload.getSourcePath()).thenReturn(Paths.get("/var/app/bar"));
-        assertMantaPathConversionEquals(upload, "app/bar.xz");
+        Path file = Files.createTempFile("test-file", ".data");
+        FileUtils.forceDeleteOnExit(file.toFile());
+
+        when(upload.getSourcePath()).thenReturn(file);
+
+        String expected = file.subpath(1, file.getNameCount()).toString()
+                + "." + ObjectCompressor.COMPRESSION_TYPE;
+
+        assertMantaPathConversionEquals(upload, expected);
     }
 
     public void canConvertFromUnixDirectoryPathToMantaPath() throws IOException {
@@ -37,13 +45,15 @@ public class MantaTransferClientTest {
         when(upload.isDirectory()).thenReturn(true);
         when(upload.getSourcePath()).thenReturn(dir);
 
-        assertMantaPathConversionEquals(upload, "app/bar/");
+        String expected = dir.subpath(1, dir.getNameCount()).toString() + "/";
+
+        assertMantaPathConversionEquals(upload, expected);
     }
 
     private void assertMantaPathConversionEquals(final ObjectUpload upload,
                                                  final String expectedRelativePath) {
         final TransferClient client = new MantaTransferClient(null, MANTA_ROOT);
-        final Path root = Paths.get("/var");
+        final Path root = Paths.get(System.getProperty("java.io.tmpdir"));
 
         String actual = client.convertLocalPathToRemotePath(upload.getSourcePath(),
                 root);

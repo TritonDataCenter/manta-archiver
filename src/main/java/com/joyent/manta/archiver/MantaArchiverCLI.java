@@ -59,7 +59,8 @@ import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.Command
                 MantaArchiverCLI.GenerateKey.class,
                 MantaArchiverCLI.ValidateKey.class,
                 MantaArchiverCLI.Upload.class,
-                MantaArchiverCLI.Verify.class
+                MantaArchiverCLI.VerifyLocal.class,
+                MantaArchiverCLI.VerifyRemote.class
         })
 // Documented through CLI annotations
 @SuppressWarnings({"checkstyle:javadocmethod", "checkstyle:javadoctype", "checkstyle:javadocvariable"})
@@ -393,10 +394,10 @@ public class MantaArchiverCLI {
         }
     }
 
-    @CommandLine.Command(name = "verify",
-            header = "Verifies the contents of a directory",
+    @CommandLine.Command(name = "verify-local",
+            header = "Verifies the contents of a local directory",
             description = "Verifies a local directory to a remote directory in Manta.")
-    public static class Verify extends ArchiveSubCommand {
+    public static class VerifyLocal extends ArchiveSubCommand {
         @CommandLine.Parameters(paramLabel = "local-directory",
                 index = "0", description = "directory to verify files from")
         private String localDirectory;
@@ -411,14 +412,57 @@ public class MantaArchiverCLI {
             MantaTransferClient mantaTransferClient = new MantaTransferClient(
                     MANTA_CLIENT_SUPPLIER, mantaDirectory);
 
+            boolean verificationSuccess = false;
+
             try (TransferManager manager = new TransferManager(mantaTransferClient,
                     localRoot)) {
-                manager.verifyAll();
+                verificationSuccess = manager.verifyLocal();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
                 System.err.println("Unrecoverable error verifying files on Manta");
                 e.printStackTrace(System.err);
+                System.exit(1);
+            }
+
+            if (verificationSuccess) {
+                System.exit(0);
+            } else {
+                System.exit(1);
+            }
+        }
+    }
+
+    @CommandLine.Command(name = "verify-remote",
+            header = "Verifies the contents of a remote directory",
+            description = "Verifies that all of the objects in a remote directory in Manta have the right checksums.")
+    public static class VerifyRemote extends ArchiveSubCommand {
+        @CommandLine.Parameters(paramLabel = "manta-directory",
+                index = "0", description = "directory in Manta to verify to")
+        private String mantaDirectory;
+
+        @Override
+        public void run() {
+            MantaTransferClient mantaTransferClient = new MantaTransferClient(
+                    MANTA_CLIENT_SUPPLIER, mantaDirectory);
+
+            boolean verificationSuccess = false;
+
+            try (TransferManager manager = new TransferManager(mantaTransferClient,
+                    null)) {
+                verificationSuccess = manager.verifyRemote();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (RuntimeException e) {
+                System.err.println("Unrecoverable error verifying files on Manta");
+                e.printStackTrace(System.err);
+                System.exit(1);
+            }
+
+            if (verificationSuccess) {
+                System.exit(0);
+            } else {
+                System.exit(1);
             }
         }
     }

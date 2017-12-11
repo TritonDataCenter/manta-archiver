@@ -41,14 +41,9 @@ public class TransferManager implements AutoCloseable {
 
     private static final int WAIT_MILLIS_FOR_COMPLETION_CHECK = 1000;
 
-    private final ForkJoinPool loaderPool = new ForkJoinPool(
-            ForkJoinPool.getCommonPoolParallelism(),
-            ForkJoinPool.defaultForkJoinWorkerThreadFactory,
-            new LoggingUncaughtExceptionHandler("ObjectCompressorThreadPool"),
-            true);
-
     private final TransferClient client;
     private final Path localRoot;
+
     /**
      * Creates a new instance backed by a transfer client mapped to a remote
      * filesystem root path and a local filesystem root path.
@@ -58,7 +53,12 @@ public class TransferManager implements AutoCloseable {
      */
     public TransferManager(final TransferClient client, final Path localRoot) {
         this.client = client;
-        this.localRoot = localRoot.toAbsolutePath().normalize();
+
+        if (localRoot != null) {
+            this.localRoot = localRoot.toAbsolutePath().normalize();
+        } else {
+            this.localRoot = null;
+        }
     }
 
     /**
@@ -68,10 +68,19 @@ public class TransferManager implements AutoCloseable {
      *
      * @throws InterruptedException thrown when a blocking operation is interrupted
      */
+    @SuppressWarnings("EmptyStatement")
     void uploadAll() throws InterruptedException {
+        final ForkJoinPool loaderPool = new ForkJoinPool(
+                ForkJoinPool.getCommonPoolParallelism(),
+                ForkJoinPool.defaultForkJoinWorkerThreadFactory,
+                new LoggingUncaughtExceptionHandler("ObjectCompressorThreadPool"),
+                true);
+
         final int concurrentUploaders = Math.max(client.getMaximumConcurrentUploads() - 2, 1);
         final ExecutorService uploaderExecutor = Executors.newFixedThreadPool(
-                concurrentUploaders, new UploaderThreadFactory());
+                concurrentUploaders, new NamedThreadFactory(
+                        "uploader-thread-%d", "uploaders",
+                        "UploaderThreadPool"));
 
         final int noOfinitialAsyncObjectsToProcess = concurrentUploaders * 2;
         final ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(loaderPool,
@@ -134,6 +143,10 @@ public class TransferManager implements AutoCloseable {
                     noOfObjectToUpload);
         }
 
+        LOG.debug("Shutting down object compression thread pool");
+        loaderPool.shutdown();
+        while (!loaderPool.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS));
+
         shutdownUploads(uploaderExecutor);
         pb.stop();
     }
@@ -142,10 +155,11 @@ public class TransferManager implements AutoCloseable {
      * Verifies that all of the files in the specified local directory
      * and subdirectories are identical to the files on Manta.
      *
+     * @return true when all files verified successfully
      * @throws InterruptedException thrown when a blocking operation is interrupted
      */
-    void verifyAll() throws InterruptedException {
-        System.err.println("Maven Archiver - Verify");
+    boolean verifyLocal() throws InterruptedException {
+        System.err.println("Maven Archiver - Verify Local");
         System.err.println();
 
         final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
@@ -175,6 +189,67 @@ public class TransferManager implements AutoCloseable {
                         localPath, mantaPath);
             });
         }
+
+        return verificationSuccess.get();
+    }
+
+    /**
+     * Verifies that all of the files in the specified remote directory
+     * and subdirectories are identical to the files on Manta.
+     *
+     * @return true when all files verified successfully
+     * @throws InterruptedException thrown when a blocking operation is interrupted
+     */
+    boolean verifyRemote() throws InterruptedException {
+        final int concurrentUploaders = Math.max(client.getMaximumConcurrentUploads() - 2, 1);
+        final ExecutorService verifyExecutor = Executors.newFixedThreadPool(
+                concurrentUploaders, new NamedThreadFactory(
+                        "verify-thread-%d", "verifiers",
+                        "VerifierThreadPool"));
+
+        System.err.println("Maven Archiver - Verify Remote");
+        System.err.println();
+
+        final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
+        final int statusMsgSize = 19;
+
+        final String format = "[%s] %s" + System.lineSeparator();
+
+        final AtomicLong totalFiles = new AtomicLong(0L);
+        final AtomicLong totalFilesProcessed = new AtomicLong(0L);
+
+        try (Stream<String> files = client.find()) {
+            files.forEach(mantaPath -> {
+                totalFiles.incrementAndGet();
+
+                final Callable<Void> verify = () -> {
+                    final VerificationResult result = client.verifyRemoteFile(mantaPath);
+
+                    if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
+                        verificationSuccess.set(false);
+                    }
+
+                    System.err.printf(format, StringUtils.center(result.toString(), statusMsgSize),
+                            mantaPath);
+
+                    totalFilesProcessed.incrementAndGet();
+                    return null;
+                };
+
+                verifyExecutor.submit(verify);
+            });
+        }
+
+        verifyExecutor.shutdown();
+
+        while (totalFilesProcessed.get() != totalFiles.get()) {
+            verifyExecutor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS);
+        }
+
+        System.err.printf("%d/%d files verified%s", totalFilesProcessed.get(), totalFiles.get(),
+                System.lineSeparator());
+
+        return verificationSuccess.get();
     }
 
     private static long sumOfAllFilesProcessed(final Collection<Future<Long>> futures) {
@@ -203,8 +278,5 @@ public class TransferManager implements AutoCloseable {
     @Override
     public void close() {
         client.close();
-
-        LOG.debug("Shutting down object compression thread pool");
-        loaderPool.shutdown();
     }
 }

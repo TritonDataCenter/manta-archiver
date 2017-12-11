@@ -9,20 +9,30 @@ package com.joyent.manta.archiver;
 
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaMetadata;
+import com.joyent.manta.client.MantaObject;
+import com.joyent.manta.client.MantaObjectInputStream;
 import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.exception.MantaClientHttpResponseException;
 import com.joyent.manta.http.MantaHttpHeaders;
 import com.joyent.manta.util.MantaUtils;
+import com.twmacinta.util.FastMD5Digest;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.collections4.map.LRUMap;
+import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.input.CountingInputStream;
+import org.apache.commons.io.output.NullOutputStream;
 import org.apache.http.HttpStatus;
+import org.bouncycastle.crypto.Digest;
+import org.bouncycastle.crypto.io.DigestInputStream;
 import org.bouncycastle.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.time.ZoneOffset;
 import java.util.Collections;
@@ -30,6 +40,7 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import static java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME;
 import static java.util.Objects.requireNonNull;
@@ -79,6 +90,13 @@ class MantaTransferClient implements TransferClient {
         } else {
             dirCache.add(mantaRoot + MantaClient.SEPARATOR);
         }
+    }
+
+    @Override
+    public Stream<String> find() {
+        return clientRef.get().find(mantaRoot)
+                .filter(o -> !o.isDirectory())
+                .map(MantaObject::getPath);
     }
 
     @Override
@@ -232,22 +250,29 @@ class MantaTransferClient implements TransferClient {
             final String originalSize = response.getHeaderAsString(UNCOMPRESSED_SIZE_HEADER);
 
             if (originalSize == null) {
+                LOG.info("No {} header for {}", UNCOMPRESSED_SIZE_HEADER, remotePath);
                 return VerificationResult.MISSING_HEADERS;
             }
 
-            if (size != Long.parseLong(originalSize)) {
+            final long actualSize = Long.parseLong(originalSize);
+
+            if (size != actualSize) {
+                LOG.info("Remote file different size [{}] than expected [{}]",
+                        actualSize, size);
                 return VerificationResult.WRONG_SIZE;
             }
 
             final String md5Base64 = response.getHeaderAsString(ORIGINAL_MD5_HEADER);
 
             if (md5Base64 == null) {
+                LOG.info("No {} header for {}", ORIGINAL_MD5_HEADER, remotePath);
                 return VerificationResult.MISSING_HEADERS;
             }
 
             final byte[] originalMd5 = java.util.Base64.getDecoder().decode(md5Base64);
 
             if (!Arrays.areEqual(checksum, originalMd5)) {
+                LOG.info("Checksums do not match for object {}", remotePath);
                 return VerificationResult.CHECKSUM_MISMATCH;
             }
 
@@ -257,6 +282,7 @@ class MantaTransferClient implements TransferClient {
                 MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
 
                 if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    LOG.info("Couldn't find remote path {}");
                     return VerificationResult.NOT_FOUND;
                 }
             }
@@ -266,6 +292,71 @@ class MantaTransferClient implements TransferClient {
             tce.setContextValue("mantaPath", remotePath);
             throw tce;
         }
+    }
+
+    @Override
+    public VerificationResult verifyRemoteFile(final String remotePath) {
+        final byte[] expectedChecksum;
+        final byte[] actualChecksum;
+        final long expectedSize;
+
+        try (MantaObjectInputStream in = clientRef.get().getAsInputStream(remotePath);
+             XZCompressorInputStream xzIn = new XZCompressorInputStream(in);
+             CountingInputStream cIn = new CountingInputStream(xzIn);
+             DigestInputStream dIn = new DigestInputStream(cIn, new FastMD5Digest());
+             OutputStream nullOut = new NullOutputStream()) {
+
+            final String md5Base64 = in.getHeaderAsString(ORIGINAL_MD5_HEADER);
+
+            if (md5Base64 == null) {
+                LOG.info("No {} header for {}", ORIGINAL_MD5_HEADER, remotePath);
+                return VerificationResult.MISSING_HEADERS;
+            }
+
+            expectedChecksum = java.util.Base64.getDecoder().decode(md5Base64);
+
+            final String originalSize = in.getHeaderAsString(UNCOMPRESSED_SIZE_HEADER);
+
+            if (originalSize == null) {
+                LOG.info("No {} header for {}", UNCOMPRESSED_SIZE_HEADER, remotePath);
+                return VerificationResult.MISSING_HEADERS;
+            }
+
+            expectedSize = Long.parseLong(originalSize);
+
+            IOUtils.copyLarge(dIn, nullOut, 0, expectedSize);
+
+            final Digest digest = dIn.getDigest();
+            actualChecksum = new byte[digest.getDigestSize()];
+            digest.doFinal(actualChecksum, 0);
+
+            if (dIn.read() != -1) {
+                LOG.info("{} was larger than the expected size of {}");
+                return VerificationResult.WRONG_SIZE;
+            }
+
+        } catch (IOException e) {
+            if (e instanceof MantaClientHttpResponseException) {
+                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
+
+                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    LOG.info("Couldn't find {}", remotePath);
+                    return VerificationResult.NOT_FOUND;
+                }
+            }
+
+            String msg = "Unable to verify remote file";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", remotePath);
+            throw tce;
+        }
+
+        if (!Arrays.areEqual(expectedChecksum, actualChecksum)) {
+            LOG.info("Checksums do not match for {}", remotePath);
+            return VerificationResult.CHECKSUM_MISMATCH;
+        }
+
+        return VerificationResult.OK;
     }
 
     private MantaObjectResponse checkForRemoteFile(final String path) throws IOException {
