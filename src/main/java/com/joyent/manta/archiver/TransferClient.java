@@ -7,6 +7,7 @@
  */
 package com.joyent.manta.archiver;
 
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 
@@ -16,9 +17,9 @@ import java.util.stream.Stream;
  */
 public interface TransferClient extends AutoCloseable {
     /**
-     * @return the maximum number of concurrent uploads supported by the client
+     * @return the maximum number of concurrent connections supported by the client
      */
-    int getMaximumConcurrentUploads();
+    int getMaximumConcurrentConnections();
 
     /**
      * Finds all files in the remote file system recursively within the
@@ -68,9 +69,10 @@ public interface TransferClient extends AutoCloseable {
      * the object's metadata.
      *
      * @param remotePath path to remote file
+     * @param out local stream to write data to
      * @return enum representing verification status
      */
-    VerificationResult verifyRemoteFile(String remotePath);
+    VerificationResult download(String remotePath, OutputStream out);
 
     /**
      * Converts a local path to a remote filesystem path.
@@ -81,6 +83,17 @@ public interface TransferClient extends AutoCloseable {
      * @return converted path
      */
     String convertLocalPathToRemotePath(Path sourcePath, Path localRoot);
+
+    /**
+     * Converts a remote path to a path on the local file system within the
+     * specified root.
+     *
+     * @param remotePath remote path to convert to local path
+     * @param localRoot local filesystem working directory path
+     *
+     * @return path on local filesystem reflecting the remote path
+     */
+    Path convertRemotePathToLocalPath(String remotePath, Path localRoot);
 
     /**
      * @return the base remote path in which files or directories are uploaded to

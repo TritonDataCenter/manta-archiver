@@ -9,7 +9,6 @@ package com.joyent.manta.archiver;
 
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaMetadata;
-import com.joyent.manta.client.MantaObject;
 import com.joyent.manta.client.MantaObjectInputStream;
 import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.exception.MantaClientHttpResponseException;
@@ -22,7 +21,6 @@ import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.input.CountingInputStream;
-import org.apache.commons.io.output.NullOutputStream;
 import org.apache.http.HttpStatus;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.io.DigestInputStream;
@@ -95,8 +93,14 @@ class MantaTransferClient implements TransferClient {
     @Override
     public Stream<String> find() {
         return clientRef.get().find(mantaRoot)
-                .filter(o -> !o.isDirectory())
-                .map(MantaObject::getPath);
+                .map(o -> {
+                    final String mantaPath = o.getPath();
+                    if (o.isDirectory() && !mantaPath.endsWith(MantaClient.SEPARATOR)) {
+                        return mantaPath + MantaClient.SEPARATOR;
+                    }
+
+                    return mantaPath;
+                });
     }
 
     @Override
@@ -295,7 +299,7 @@ class MantaTransferClient implements TransferClient {
     }
 
     @Override
-    public VerificationResult verifyRemoteFile(final String remotePath) {
+    public VerificationResult download(final String remotePath, final OutputStream out) {
         final byte[] expectedChecksum;
         final byte[] actualChecksum;
         final long expectedSize;
@@ -303,8 +307,7 @@ class MantaTransferClient implements TransferClient {
         try (MantaObjectInputStream in = clientRef.get().getAsInputStream(remotePath);
              XZCompressorInputStream xzIn = new XZCompressorInputStream(in);
              CountingInputStream cIn = new CountingInputStream(xzIn);
-             DigestInputStream dIn = new DigestInputStream(cIn, new FastMD5Digest());
-             OutputStream nullOut = new NullOutputStream()) {
+             DigestInputStream dIn = new DigestInputStream(cIn, new FastMD5Digest())) {
 
             final String md5Base64 = in.getHeaderAsString(ORIGINAL_MD5_HEADER);
 
@@ -324,7 +327,7 @@ class MantaTransferClient implements TransferClient {
 
             expectedSize = Long.parseLong(originalSize);
 
-            IOUtils.copyLarge(dIn, nullOut, 0, expectedSize);
+            IOUtils.copyLarge(dIn, out, 0, expectedSize);
 
             final Digest digest = dIn.getDigest();
             actualChecksum = new byte[digest.getDigestSize()];
@@ -372,7 +375,7 @@ class MantaTransferClient implements TransferClient {
     }
 
     @Override
-    public int getMaximumConcurrentUploads() {
+    public int getMaximumConcurrentConnections() {
         return this.clientRef.get().getContext().getMaximumConnections();
     }
 
@@ -411,6 +414,11 @@ class MantaTransferClient implements TransferClient {
         }
 
         return FilenameUtils.normalize(builder.toString(), true);
+    }
+
+    @Override
+    public Path convertRemotePathToLocalPath(final String remotePath, final Path localRoot) {
+        return null;
     }
 
     @Override

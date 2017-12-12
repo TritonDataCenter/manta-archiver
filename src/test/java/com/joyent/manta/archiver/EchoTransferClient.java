@@ -7,6 +7,7 @@
  */
 package com.joyent.manta.archiver;
 
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 
@@ -31,7 +32,7 @@ class EchoTransferClient implements TransferClient {
     }
 
     @Override
-    public int getMaximumConcurrentUploads() {
+    public int getMaximumConcurrentConnections() {
         return 12;
     }
 
@@ -39,6 +40,11 @@ class EchoTransferClient implements TransferClient {
     public String convertLocalPathToRemotePath(final Path sourcePath,
                                                final Path localRoot) {
         return "/remote/" + localRoot;
+    }
+
+    @Override
+    public Path convertRemotePathToLocalPath(final String remotePath, final Path localRoot) {
+        return null;
     }
 
     @Override
@@ -58,7 +64,8 @@ class EchoTransferClient implements TransferClient {
 
 
     @Override
-    public VerificationResult verifyRemoteFile(final String remotePath) {
+    public VerificationResult download(final String remotePath,
+                                       final OutputStream out) {
         return null;
     }
 

@@ -7,14 +7,19 @@
  */
 package com.joyent.manta.archiver;
 
+import com.joyent.manta.client.MantaClient;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.output.NullOutputStream;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -76,7 +81,7 @@ public class TransferManager implements AutoCloseable {
                 new LoggingUncaughtExceptionHandler("ObjectCompressorThreadPool"),
                 true);
 
-        final int concurrentUploaders = Math.max(client.getMaximumConcurrentUploads() - 2, 1);
+        final int concurrentUploaders = Math.max(client.getMaximumConcurrentConnections() - 2, 1);
         final ExecutorService uploaderExecutor = Executors.newFixedThreadPool(
                 concurrentUploaders, new NamedThreadFactory(
                         "uploader-thread-%d", "uploaders",
@@ -152,6 +157,69 @@ public class TransferManager implements AutoCloseable {
     }
 
     /**
+     * Downloads all files from a remote Manta path into the local working
+     * directory.
+     *
+     * @throws InterruptedException thrown when a blocking operation is interrupted
+     */
+    void downloadAll() throws InterruptedException {
+        final int concurrentDownloaders = Math.max(client.getMaximumConcurrentConnections() - 2, 1);
+        final ExecutorService downloadExecutor = Executors.newFixedThreadPool(
+                concurrentDownloaders, new NamedThreadFactory(
+                        "download-thread-%d", "downloaders",
+                        "DownloaderThreadPool"));
+
+        System.err.println("Maven Archiver - Download");
+        System.err.println();
+
+        final String format = "[%s] %s --> %s" + System.lineSeparator();
+
+        final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
+        final AtomicLong totalObjects = new AtomicLong(0L);
+        final AtomicLong totalObjectsProcessed = new AtomicLong(0L);
+
+        try (Stream<String> objects = client.find()) {
+            objects.forEach(remoteObject -> {
+                final Path path = client.convertRemotePathToLocalPath(remoteObject, localRoot);
+                totalObjects.incrementAndGet();
+
+                if (remoteObject.endsWith(MantaClient.SEPARATOR)) {
+                    path.toFile().mkdirs();
+                    totalObjectsProcessed.incrementAndGet();
+                } else {
+                    final Path parent = path.getParent();
+                    if (!parent.toFile().exists()) {
+                        parent.toFile().mkdirs();
+                    }
+
+                    final Callable<Void> download = () -> {
+                        try (OutputStream out = Files.newOutputStream(path)) {
+                            final VerificationResult result = client.download(remoteObject, out);
+
+                            if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
+                                verificationSuccess.set(false);
+                            }
+
+                            totalObjectsProcessed.incrementAndGet();
+                            System.err.printf(format, result, remoteObject, path);
+                        }
+
+                        return null;
+                    };
+
+                    downloadExecutor.submit(download);
+                }
+            });
+        }
+
+        downloadExecutor.shutdown();
+
+        while (totalObjectsProcessed.get() != totalObjects.get()) {
+            downloadExecutor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS);
+        }
+    }
+
+    /**
      * Verifies that all of the files in the specified local directory
      * and subdirectories are identical to the files on Manta.
      *
@@ -201,9 +269,9 @@ public class TransferManager implements AutoCloseable {
      * @throws InterruptedException thrown when a blocking operation is interrupted
      */
     boolean verifyRemote() throws InterruptedException {
-        final int concurrentUploaders = Math.max(client.getMaximumConcurrentUploads() - 2, 1);
+        final int concurrentVerifiers = Math.max(client.getMaximumConcurrentConnections() - 2, 1);
         final ExecutorService verifyExecutor = Executors.newFixedThreadPool(
-                concurrentUploaders, new NamedThreadFactory(
+                concurrentVerifiers, new NamedThreadFactory(
                         "verify-thread-%d", "verifiers",
                         "VerifierThreadPool"));
 
@@ -218,12 +286,14 @@ public class TransferManager implements AutoCloseable {
         final AtomicLong totalFiles = new AtomicLong(0L);
         final AtomicLong totalFilesProcessed = new AtomicLong(0L);
 
-        try (Stream<String> files = client.find()) {
-            files.forEach(mantaPath -> {
+        try (Stream<String> files = client.find();
+             OutputStream out = new NullOutputStream()) {
+            // Only process files and no directories
+            files.filter(p -> !p.endsWith(MantaClient.SEPARATOR)).forEach(mantaPath -> {
                 totalFiles.incrementAndGet();
 
                 final Callable<Void> verify = () -> {
-                    final VerificationResult result = client.verifyRemoteFile(mantaPath);
+                    final VerificationResult result = client.download(mantaPath, out);
 
                     if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
                         verificationSuccess.set(false);
@@ -238,6 +308,10 @@ public class TransferManager implements AutoCloseable {
 
                 verifyExecutor.submit(verify);
             });
+        } catch (IOException e) {
+            String msg = "Unable to verify remote files";
+            TransferClientException tce = new TransferClientException(msg, e);
+            throw tce;
         }
 
         verifyExecutor.shutdown();

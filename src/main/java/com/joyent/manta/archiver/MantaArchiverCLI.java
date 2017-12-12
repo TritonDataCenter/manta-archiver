@@ -59,6 +59,7 @@ import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.Command
                 MantaArchiverCLI.GenerateKey.class,
                 MantaArchiverCLI.ValidateKey.class,
                 MantaArchiverCLI.Upload.class,
+                MantaArchiverCLI.Download.class,
                 MantaArchiverCLI.VerifyLocal.class,
                 MantaArchiverCLI.VerifyRemote.class
         })
@@ -389,6 +390,37 @@ public class MantaArchiverCLI {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
                 System.err.println("Unrecoverable error uploading files to Manta");
+                e.printStackTrace(System.err);
+            }
+        }
+    }
+
+    @CommandLine.Command(name = "download",
+            header = "Downloads a directory from Manta",
+            description = "Downloads the contents of a remote directory in Manta.")
+    public static class Download extends ArchiveSubCommand {
+
+        @CommandLine.Parameters(paramLabel = "local-directory",
+                index = "0", description = "directory to download files to")
+        private String localDirectory;
+        @CommandLine.Parameters(paramLabel = "manta-directory",
+                index = "1", description = "directory in Manta to download files from")
+        private String mantaDirectory;
+
+        @Override
+        public void run() {
+            final Path localRoot = findLocalPath(localDirectory);
+
+            MantaTransferClient mantaTransferClient = new MantaTransferClient(
+                    MANTA_CLIENT_SUPPLIER, mantaDirectory);
+
+            try (TransferManager manager = new TransferManager(mantaTransferClient,
+                    localRoot)) {
+                manager.downloadAll();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (RuntimeException e) {
+                System.err.println("Unrecoverable error downloading files from Manta");
                 e.printStackTrace(System.err);
             }
         }
