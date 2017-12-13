@@ -7,8 +7,10 @@
  */
 package com.joyent.manta.archiver;
 
+import java.io.File;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
@@ -65,7 +67,8 @@ class EchoTransferClient implements TransferClient {
 
     @Override
     public VerificationResult download(final String remotePath,
-                                       final OutputStream out) {
+                                       final OutputStream out,
+                                       final Optional<File> file) {
         return null;
     }
 

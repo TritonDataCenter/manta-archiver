@@ -19,10 +19,10 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -172,8 +172,6 @@ public class TransferManager implements AutoCloseable {
         System.err.println("Maven Archiver - Download");
         System.err.println();
 
-        final String format = "[%s] %s --> %s" + System.lineSeparator();
-
         final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
         final AtomicLong totalObjects = new AtomicLong(0L);
         final AtomicLong totalObjectsProcessed = new AtomicLong(0L);
@@ -192,21 +190,8 @@ public class TransferManager implements AutoCloseable {
                         parent.toFile().mkdirs();
                     }
 
-                    final Callable<Void> download = () -> {
-                        try (OutputStream out = Files.newOutputStream(path)) {
-                            final VerificationResult result = client.download(remoteObject, out);
-
-                            if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
-                                verificationSuccess.set(false);
-                            }
-
-                            totalObjectsProcessed.incrementAndGet();
-                            System.err.printf(format, result, remoteObject, path);
-                        }
-
-                        return null;
-                    };
-
+                    Callable<Void> download = new ObjectDownloadCallable(
+                            path, client, remoteObject, verificationSuccess, totalObjectsProcessed);
                     downloadExecutor.submit(download);
                 }
             });
@@ -279,7 +264,6 @@ public class TransferManager implements AutoCloseable {
         System.err.println();
 
         final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
-        final int statusMsgSize = 19;
 
         final String format = "[%s] %s" + System.lineSeparator();
 
@@ -293,14 +277,14 @@ public class TransferManager implements AutoCloseable {
                 totalFiles.incrementAndGet();
 
                 final Callable<Void> verify = () -> {
-                    final VerificationResult result = client.download(mantaPath, out);
+                    final VerificationResult result = client.download(mantaPath, out, Optional.empty());
 
                     if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
                         verificationSuccess.set(false);
                     }
 
-                    System.err.printf(format, StringUtils.center(result.toString(), statusMsgSize),
-                            mantaPath);
+                    String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
+                    System.err.printf(format, centered, mantaPath);
 
                     totalFilesProcessed.incrementAndGet();
                     return null;

@@ -15,12 +15,14 @@ import com.joyent.manta.exception.MantaClientHttpResponseException;
 import com.joyent.manta.http.MantaHttpHeaders;
 import com.joyent.manta.util.MantaUtils;
 import com.twmacinta.util.FastMD5Digest;
+import com.twmacinta.util.MD5;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.collections4.map.LRUMap;
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.input.CountingInputStream;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.io.DigestInputStream;
@@ -32,9 +34,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -299,10 +304,12 @@ class MantaTransferClient implements TransferClient {
     }
 
     @Override
-    public VerificationResult download(final String remotePath, final OutputStream out) {
+    public VerificationResult download(final String remotePath, final OutputStream out,
+                                       final Optional<File> file) {
         final byte[] expectedChecksum;
         final byte[] actualChecksum;
         final long expectedSize;
+        final long lastModified;
 
         try (MantaObjectInputStream in = clientRef.get().getAsInputStream(remotePath);
              XZCompressorInputStream xzIn = new XZCompressorInputStream(in);
@@ -327,6 +334,7 @@ class MantaTransferClient implements TransferClient {
 
             expectedSize = Long.parseLong(originalSize);
 
+            LOG.debug("Downloading [{}]", remotePath);
             IOUtils.copyLarge(dIn, out, 0, expectedSize);
 
             final Digest digest = dIn.getDigest();
@@ -338,6 +346,11 @@ class MantaTransferClient implements TransferClient {
                 return VerificationResult.WRONG_SIZE;
             }
 
+            if (in.getLastModifiedTime() != null) {
+                lastModified = in.getLastModifiedTime().getTime();
+            } else {
+                lastModified = Instant.now().toEpochMilli();
+            }
         } catch (IOException e) {
             if (e instanceof MantaClientHttpResponseException) {
                 MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
@@ -357,6 +370,19 @@ class MantaTransferClient implements TransferClient {
         if (!Arrays.areEqual(expectedChecksum, actualChecksum)) {
             LOG.info("Checksums do not match for {}", remotePath);
             return VerificationResult.CHECKSUM_MISMATCH;
+        }
+
+        if (file.isPresent()) {
+            if (!file.get().setLastModified(lastModified)) {
+                LOG.warn("Unable to write last modified date for file: {}", file);
+            }
+
+            final long fileSize = file.get().length();
+            if (fileSize != expectedSize) {
+                LOG.info("Incorrect number of bytes written to file [{}]. Actual: {} Expected: {}",
+                        file, fileSize, expectedSize);
+                return VerificationResult.WRONG_SIZE;
+            };
         }
 
         return VerificationResult.OK;
@@ -418,7 +444,11 @@ class MantaTransferClient implements TransferClient {
 
     @Override
     public Path convertRemotePathToLocalPath(final String remotePath, final Path localRoot) {
-        return null;
+        final String relativePath = StringUtils.removeFirst(remotePath, mantaRoot);
+        final String extension = "." + ObjectCompressor.COMPRESSION_TYPE;
+        final String withoutCompressionSuffix = StringUtils.removeEnd(relativePath, extension);
+
+        return Paths.get(localRoot.toString(), withoutCompressionSuffix);
     }
 
     @Override

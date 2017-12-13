@@ -38,5 +38,10 @@ public enum VerificationResult {
     /**
      * Local object checksum does not match remote object checksum.
      */
-    CHECKSUM_MISMATCH
+    CHECKSUM_MISMATCH;
+
+    /**
+     * Maximum size of enum as string (used for centering text)
+     */
+    public static final int MAX_STRING_SIZE = 19;
 }
