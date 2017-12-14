@@ -57,42 +57,55 @@ class ObjectDownloadRunnable implements Runnable {
 
     @Override
     public void run() {
-        final File file = path.toFile();
+        try {
+            final File file = path.toFile();
 
-        if (file.exists()) {
-            try {
-                final long size = file.length();
-                final byte[] checksum = MD5.getHash(file);
+            if (localFileIsTheSameAsRemote(file)) {
+                String centered = StringUtils.center("EXISTS", VerificationResult.MAX_STRING_SIZE);
+                System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
+                return;
+            }
 
-                // Don't download if we already have the file
-                if (client.verifyFile(remoteObject, size, checksum).equals(VerificationResult.OK)) {
-                    String centered = StringUtils.center("EXISTS", VerificationResult.MAX_STRING_SIZE);
-                    System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
-                    return;
+            try (OutputStream out = Files.newOutputStream(path)) {
+                final VerificationResult result = client.download(remoteObject, out,
+                        Optional.of(file));
+
+                if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
+                    verificationSuccess.set(false);
                 }
+
+                String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
+                System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
             } catch (IOException e) {
-                String msg = String.format("Unable to checksum file: %s", file);
-                LOG.error(msg, e);
+                String msg = "Unable to write file";
+                TransferClientException tce = new TransferClientException(msg, e);
+                tce.setContextValue("localPath", path);
+                tce.setContextValue("mantaPath", remoteObject);
+                throw tce;
             }
-        }
-
-        try (OutputStream out = Files.newOutputStream(path)) {
-            final VerificationResult result = client.download(remoteObject, out,
-                    Optional.of(file));
-
-            if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
-                verificationSuccess.set(false);
-            }
-
+        } finally {
             totalObjectsProcessed.incrementAndGet();
-            String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
-            System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
-        } catch (IOException e) {
-            String msg = "Unable to write file";
-            TransferClientException tce = new TransferClientException(msg, e);
-            tce.setContextValue("localPath", path);
-            tce.setContextValue("mantaPath", remoteObject);
-            throw tce;
         }
+    }
+
+    private boolean localFileIsTheSameAsRemote(final File file) {
+        if (!file.exists()) {
+            return false;
+        }
+
+        try {
+            final long size = file.length();
+            final byte[] checksum = MD5.getHash(file);
+
+            // Don't download if we already have the file
+            if (client.verifyFile(remoteObject, size, checksum).equals(VerificationResult.OK)) {
+                return true;
+            }
+        } catch (RuntimeException | IOException e) {
+            String msg = String.format("Unable to checksum file: %s", file);
+            LOG.error(msg, e);
+        }
+
+        return false;
     }
 }

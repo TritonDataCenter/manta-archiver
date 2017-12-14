@@ -7,11 +7,6 @@
  */
 package com.joyent.manta.archiver;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.MappingIterator;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SequenceWriter;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
@@ -23,8 +18,6 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -182,92 +175,48 @@ public class TransferManager implements AutoCloseable {
         final AtomicLong totalObjects = new AtomicLong(0L);
         final AtomicLong totalObjectsProcessed = new AtomicLong(0L);
 
-        ObjectMapper mapper = new ObjectMapper()
-                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-                .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        try (Stream<FileDownload> downloads = client.find()) {
+            downloads.forEach(remoteObject -> {
+                totalObjects.incrementAndGet();
 
-        final File temp;
-
-        try {
-             temp = Files.createTempFile("download-list-", ".json").toFile();
-        } catch (IOException e) {
-            String msg = "Unable to create temporary file";
-            TransferClientException tce = new TransferClientException(msg, e);
-            throw tce;
-        }
-
-        try (Stream<FileDownload> downloads = client.find();
-             SequenceWriter writer = mapper.writerFor(FileDownload.class).writeValues(temp)) {
-            downloads.forEach(d ->{
-                try {
-                    if (d == null) {
-                        System.out.println("barf");
-                    }
-                    writer.write(d);
-                    totalObjects.incrementAndGet();
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            });
-        } catch (IOException | UncheckedIOException e) {
-            String msg = "Unable to write temporary file containing list of "
-                    + "files to download";
-            final TransferClientException tce;
-
-            if (e instanceof UncheckedIOException) {
-                tce = new TransferClientException(msg, e.getCause());
-            } else {
-                tce = new TransferClientException(msg, e);
-            }
-
-            throw tce;
-        }
-
-        try (MappingIterator<FileDownload> itr = mapper.readerFor(FileDownload.class).readValues(temp)) {
-            LOG.info("Finding all files to download and writing them to a temporary file");
-
-            System.err.printf("Total files to download: %d%s", totalObjects.get(),
-                    System.lineSeparator());
-
-            LOG.info("Starting file download for {} files", totalObjects);
-
-            while (itr.hasNextValue()) {
-                final FileDownload remoteObject = itr.next();
                 final Path path = client.convertRemotePathToLocalPath(remoteObject.getRemotePath(), localRoot);
-                if (remoteObject.isDirectory()) {
-                    path.toFile().mkdirs();
+                final File file = path.toFile();
 
-                    if (path.toFile().exists()) {
-                        path.toFile().setLastModified(remoteObject.getLastModified());
+                if (remoteObject.isDirectory()) {
+                    if (file.exists() && file.lastModified() != remoteObject.getLastModified()) {
+                        if (!file.setLastModified(remoteObject.getLastModified())) {
+                            LOG.warn("Unable to set last modified time for directory: {}",
+                                    file);
+                        }
+                    } else {
+                        file.mkdirs();
                     }
 
                     totalObjectsProcessed.incrementAndGet();
-                    continue;
-                }
-
-                if (!path.toFile().exists()) {
-                    final Path parent = path.getParent();
-                    if (!parent.toFile().exists()) {
-                        parent.toFile().mkdirs();
+                } else {
+                    if (!file.exists()) {
+                        final Path parent = path.getParent();
+                        if (!parent.toFile().exists()) {
+                            parent.toFile().mkdirs();
+                        }
                     }
-                }
 
-                Runnable download = new ObjectDownloadRunnable(
-                        path, client, remoteObject.getRemotePath(), verificationSuccess, totalObjectsProcessed);
-                downloadExecutor.execute(download);
-            }
-        } catch (IOException | UncheckedIOException e) {
-            String msg = "Unable to read temporary file containing list of "
-                    + "files to download";
-            TransferClientException tce = new TransferClientException(msg, e);
-            throw tce;
+                    Runnable download = new ObjectDownloadRunnable(
+                            path, client, remoteObject.getRemotePath(), verificationSuccess, totalObjectsProcessed);
+                    downloadExecutor.execute(download);
+                }
+            });
         }
 
         downloadExecutor.shutdown();
 
-        while (totalObjectsProcessed.get() != totalObjects.get()) {
+        while (totalObjectsProcessed.get() < totalObjects.get()) {
             downloadExecutor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS);
         }
+
+        System.err.println();
+        System.err.printf("Downloaded %d/%d objects%s",
+                totalObjectsProcessed.get(), totalObjects.get(), System.lineSeparator());
     }
 
     /**
