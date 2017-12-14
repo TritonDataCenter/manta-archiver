@@ -41,7 +41,7 @@ public enum VerificationResult {
     CHECKSUM_MISMATCH;
 
     /**
-     * Maximum size of enum as string (used for centering text)
+     * Maximum size of enum as string (used for centering text).
      */
     public static final int MAX_STRING_SIZE = 19;
 }

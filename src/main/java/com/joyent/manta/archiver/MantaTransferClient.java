@@ -389,7 +389,7 @@ class MantaTransferClient implements TransferClient {
                 LOG.info("Incorrect number of bytes written to file [{}]. Actual: {} Expected: {}",
                         file, fileSize, expectedSize);
                 return VerificationResult.WRONG_SIZE;
-            };
+            }
         }
 
         return VerificationResult.OK;

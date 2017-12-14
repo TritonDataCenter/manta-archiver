@@ -23,6 +23,14 @@ class FileDownload implements Serializable {
     private final String remotePath;
     private final boolean isDirectory;
 
+    /**
+     * Creates a new instance.
+     *
+     * @param size uncompressed size of file to download
+     * @param lastModified remote last modified time in epoch milliseconds
+     * @param remotePath remote Manta path
+     * @param isDirectory flag indicating if the object is a directory
+     */
     FileDownload(final Long size,
                  final Long lastModified,
                  final String remotePath,
