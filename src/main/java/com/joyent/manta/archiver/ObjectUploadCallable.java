@@ -59,7 +59,7 @@ class ObjectUploadCallable implements Callable<Long> {
 
     @Override
     public Long call() throws Exception {
-        Long totalProcessed = 0L;
+        long totalProcessed = 0L;
 
         try {
             while (totalUploads.get() < noOfObjectToUpload) {
