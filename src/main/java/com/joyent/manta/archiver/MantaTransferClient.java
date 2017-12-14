@@ -15,7 +15,6 @@ import com.joyent.manta.exception.MantaClientHttpResponseException;
 import com.joyent.manta.http.MantaHttpHeaders;
 import com.joyent.manta.util.MantaUtils;
 import com.twmacinta.util.FastMD5Digest;
-import com.twmacinta.util.MD5;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.collections4.map.LRUMap;
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
@@ -96,15 +95,23 @@ class MantaTransferClient implements TransferClient {
     }
 
     @Override
-    public Stream<String> find() {
+    public Stream<FileDownload> find() {
         return clientRef.get().find(mantaRoot)
                 .map(o -> {
                     final String mantaPath = o.getPath();
-                    if (o.isDirectory() && !mantaPath.endsWith(MantaClient.SEPARATOR)) {
-                        return mantaPath + MantaClient.SEPARATOR;
+
+                    final Long lastModified;
+
+                    if (o.getLastModifiedTime() != null) {
+                        lastModified = o.getLastModifiedTime().getTime();
+                    } else {
+                        lastModified = null;
                     }
 
-                    return mantaPath;
+                    return new FileDownload(o.getContentLength(),
+                            lastModified,
+                            mantaPath,
+                            o.isDirectory());
                 });
     }
 
@@ -351,7 +358,7 @@ class MantaTransferClient implements TransferClient {
             } else {
                 lastModified = Instant.now().toEpochMilli();
             }
-        } catch (IOException e) {
+        } catch (RuntimeException | IOException e) {
             if (e instanceof MantaClientHttpResponseException) {
                 MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
 
@@ -361,7 +368,7 @@ class MantaTransferClient implements TransferClient {
                 }
             }
 
-            String msg = "Unable to verify remote file";
+            String msg = "Unable to download remote file";
             TransferClientException tce = new TransferClientException(msg, e);
             tce.setContextValue("mantaPath", remotePath);
             throw tce;

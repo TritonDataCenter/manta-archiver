@@ -16,8 +16,6 @@ import org.testng.annotations.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
@@ -31,7 +29,7 @@ public class MantaTransferClientTest {
     private static final String MANTA_ROOT = "/username/stor/backup";
     private static final String LOCAL_ROOT =
             FilenameUtils.normalize(System.getProperty("java.io.tmpdir")
-            + "manta-transfer-client-test");
+                    + File.separator + "manta-transfer-client-test");
 
     @BeforeClass
     public void before() throws IOException {

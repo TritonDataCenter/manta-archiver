@@ -64,7 +64,7 @@
         <!-- Dependency versions -->
         <dependency.checkstyle.version>8.2</dependency.checkstyle.version>
         <dependency.picocli.version>1.0.1</dependency.picocli.version>
-        <dependency.java-manta.version>3.2.1</dependency.java-manta.version>
+        <dependency.java-manta.version>3.2.2-SNAPSHOT</dependency.java-manta.version>
         <dependency.commons-lang>3.6</dependency.commons-lang>
         <dependency.commons-compress.version>1.14</dependency.commons-compress.version>
         <dependency.commons-math.version>3.6.1</dependency.commons-math.version>
@@ -145,6 +145,12 @@
             <groupId>me.tongfei</groupId>
             <artifactId>progressbar</artifactId>
             <version>${dependency.progressbar.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mapdb</groupId>
+            <artifactId>mapdb</artifactId>
+            <version>3.0.5</version>
         </dependency>
 
         <dependency>

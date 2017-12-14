@@ -9,23 +9,23 @@ package com.joyent.manta.archiver;
 
 import com.twmacinta.util.MD5;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * {@link Callable} implementation that handles file downloads.
+ * {@link Runnable} implementation that handles file downloads.
  */
-class ObjectDownloadCallable implements Callable<Void> {
+class ObjectDownloadRunnable implements Runnable {
+    private static final Logger LOG = LoggerFactory.getLogger(ObjectDownloadRunnable.class);
     private static final String OUTPUT_FORMAT = "[%s] %s --> %s" + System.lineSeparator();
 
     private Path path;
@@ -43,7 +43,7 @@ class ObjectDownloadCallable implements Callable<Void> {
      * @param verificationSuccess atomic boolean flag indicated everything succeeded
      * @param totalObjectsProcessed atomic long counting total files downlaoded
      */
-    ObjectDownloadCallable(final Path path,
+    ObjectDownloadRunnable(final Path path,
                            final TransferClient client,
                            final String remoteObject,
                            final AtomicBoolean verificationSuccess,
@@ -56,37 +56,27 @@ class ObjectDownloadCallable implements Callable<Void> {
     }
 
     @Override
-    public Void call() throws Exception {
+    public void run() {
         final File file = path.toFile();
 
         if (file.exists()) {
-            final byte[] checksum;
-            final long size = file.length();
-
             try {
-                 checksum = MD5.getHash(file);
-            } catch (IOException e) {
-                String msg = "Unable to checksum file";
-                TransferClientException tce = new TransferClientException(msg, e);
-                tce.setContextValue("localFile", file);
-                throw tce;
-            }
+                final long size = file.length();
+                final byte[] checksum = MD5.getHash(file);
 
-            // Don't download if we already have the file
-            if (client.verifyFile(remoteObject, size, checksum).equals(VerificationResult.OK)) {
-                String centered = StringUtils.center("EXISTS", VerificationResult.MAX_STRING_SIZE);
-                System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
-                return null;
+                // Don't download if we already have the file
+                if (client.verifyFile(remoteObject, size, checksum).equals(VerificationResult.OK)) {
+                    String centered = StringUtils.center("EXISTS", VerificationResult.MAX_STRING_SIZE);
+                    System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
+                    return;
+                }
+            } catch (IOException e) {
+                String msg = String.format("Unable to checksum file: %s", file);
+                LOG.error(msg, e);
             }
         }
 
-        final OpenOption[] options = new OpenOption[] {
-                StandardOpenOption.WRITE,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-        };
-
-        try (OutputStream out = Files.newOutputStream(path, options)) {
+        try (OutputStream out = Files.newOutputStream(path)) {
             final VerificationResult result = client.download(remoteObject, out,
                     Optional.of(file));
 
@@ -97,8 +87,12 @@ class ObjectDownloadCallable implements Callable<Void> {
             totalObjectsProcessed.incrementAndGet();
             String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
             System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
+        } catch (IOException e) {
+            String msg = "Unable to write file";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("localPath", path);
+            tce.setContextValue("mantaPath", remoteObject);
+            throw tce;
         }
-
-        return null;
     }
 }

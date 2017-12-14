@@ -7,7 +7,11 @@
  */
 package com.joyent.manta.archiver;
 
-import com.joyent.manta.client.MantaClient;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MappingIterator;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SequenceWriter;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
@@ -19,11 +23,15 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
@@ -133,10 +141,8 @@ public class TransferManager implements AutoCloseable {
         }
         LOG.debug("All futures have completed");
 
-        if (LOG.isDebugEnabled()) {
-            final long totalProcessed = sumOfAllFilesProcessed(futures);
-            LOG.debug("Total actually processed: {}", totalProcessed);
-        }
+        final long totalProcessed = sumOfAllFilesProcessed(futures);
+        LOG.debug("Total actually processed: {}", totalProcessed);
 
         // This is where we block waiting for the uploaders to finish
         while (totalUploads.get() < transferDetails.numberOfFiles) {
@@ -176,25 +182,85 @@ public class TransferManager implements AutoCloseable {
         final AtomicLong totalObjects = new AtomicLong(0L);
         final AtomicLong totalObjectsProcessed = new AtomicLong(0L);
 
-        try (Stream<String> objects = client.find()) {
-            objects.forEach(remoteObject -> {
-                final Path path = client.convertRemotePathToLocalPath(remoteObject, localRoot);
-                totalObjects.incrementAndGet();
+        ObjectMapper mapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
 
-                if (remoteObject.endsWith(MantaClient.SEPARATOR)) {
+        final File temp;
+
+        try {
+             temp = Files.createTempFile("download-list-", ".json").toFile();
+        } catch (IOException e) {
+            String msg = "Unable to create temporary file";
+            TransferClientException tce = new TransferClientException(msg, e);
+            throw tce;
+        }
+
+        try (Stream<FileDownload> downloads = client.find();
+             SequenceWriter writer = mapper.writerFor(FileDownload.class).writeValues(temp)) {
+            downloads.forEach(d ->{
+                try {
+                    if (d == null) {
+                        System.out.println("barf");
+                    }
+                    writer.write(d);
+                    totalObjects.incrementAndGet();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (IOException | UncheckedIOException e) {
+            String msg = "Unable to write temporary file containing list of "
+                    + "files to download";
+            final TransferClientException tce;
+
+            if (e instanceof UncheckedIOException) {
+                tce = new TransferClientException(msg, e.getCause());
+            } else {
+                tce = new TransferClientException(msg, e);
+            }
+
+            throw tce;
+        }
+
+        try (MappingIterator<FileDownload> itr = mapper.readerFor(FileDownload.class).readValues(temp)) {
+            LOG.info("Finding all files to download and writing them to a temporary file");
+
+            System.err.printf("Total files to download: %d%s", totalObjects.get(),
+                    System.lineSeparator());
+
+            LOG.info("Starting file download for {} files", totalObjects);
+
+            while (itr.hasNextValue()) {
+                final FileDownload remoteObject = itr.next();
+                final Path path = client.convertRemotePathToLocalPath(remoteObject.getRemotePath(), localRoot);
+                if (remoteObject.isDirectory()) {
                     path.toFile().mkdirs();
+
+                    if (path.toFile().exists()) {
+                        path.toFile().setLastModified(remoteObject.getLastModified());
+                    }
+
                     totalObjectsProcessed.incrementAndGet();
-                } else {
+                    continue;
+                }
+
+                if (!path.toFile().exists()) {
                     final Path parent = path.getParent();
                     if (!parent.toFile().exists()) {
                         parent.toFile().mkdirs();
                     }
-
-                    Callable<Void> download = new ObjectDownloadCallable(
-                            path, client, remoteObject, verificationSuccess, totalObjectsProcessed);
-                    downloadExecutor.submit(download);
                 }
-            });
+
+                Runnable download = new ObjectDownloadRunnable(
+                        path, client, remoteObject.getRemotePath(), verificationSuccess, totalObjectsProcessed);
+                downloadExecutor.execute(download);
+            }
+        } catch (IOException | UncheckedIOException e) {
+            String msg = "Unable to read temporary file containing list of "
+                    + "files to download";
+            TransferClientException tce = new TransferClientException(msg, e);
+            throw tce;
         }
 
         downloadExecutor.shutdown();
@@ -270,27 +336,27 @@ public class TransferManager implements AutoCloseable {
         final AtomicLong totalFiles = new AtomicLong(0L);
         final AtomicLong totalFilesProcessed = new AtomicLong(0L);
 
-        try (Stream<String> files = client.find();
+        try (Stream<FileDownload> files = client.find();
              OutputStream out = new NullOutputStream()) {
             // Only process files and no directories
-            files.filter(p -> !p.endsWith(MantaClient.SEPARATOR)).forEach(mantaPath -> {
+            files.filter(f -> !f.isDirectory()).forEach(file -> {
                 totalFiles.incrementAndGet();
 
-                final Callable<Void> verify = () -> {
-                    final VerificationResult result = client.download(mantaPath, out, Optional.empty());
+                final Runnable verify = () -> {
+                    final VerificationResult result = client.download(
+                            file.getRemotePath(), out, Optional.empty());
 
                     if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
                         verificationSuccess.set(false);
                     }
 
                     String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
-                    System.err.printf(format, centered, mantaPath);
+                    System.err.printf(format, centered, file);
 
                     totalFilesProcessed.incrementAndGet();
-                    return null;
                 };
 
-                verifyExecutor.submit(verify);
+                verifyExecutor.execute(verify);
             });
         } catch (IOException e) {
             String msg = "Unable to verify remote files";
@@ -314,8 +380,14 @@ public class TransferManager implements AutoCloseable {
         return futures.stream().map(f -> {
             try {
                 return f.get();
-            } catch (Exception e) {
-                throw new FileProcessingException(e);
+            } catch (ExecutionException e) {
+                LOG.error("Error processing upload", e);
+                return 0L;
+            } catch (CancellationException e) {
+                return 0L;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return 0L;
             }
         }).mapToLong(Long::longValue).sum();
     }

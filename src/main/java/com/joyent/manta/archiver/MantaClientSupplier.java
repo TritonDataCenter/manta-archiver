@@ -21,14 +21,17 @@ import java.util.function.Supplier;
  * Provides configured {@link MantaClient} instances.
  */
 public class MantaClientSupplier implements Supplier<MantaClient> {
-    private static final int EXPECT_CONTINUE_DEFAULT_TIMEOUT = 3000;
+    private static final int EXPECT_CONTINUE_DEFAULT_TIMEOUT = 3_000;
+    private static final int TIMEOUT_FROM_CONNECTION_POOL = 15_000;
 
     @Override
     public MantaClient get() {
         ConfigContext config = new ChainedConfigContext(new DefaultsConfigContext(),
                 new EnvVarConfigContext(),
                 new MapConfigContext(System.getProperties()),
-                new StandardConfigContext().setExpectContinueTimeout(EXPECT_CONTINUE_DEFAULT_TIMEOUT));
+                new StandardConfigContext()
+                        .setExpectContinueTimeout(EXPECT_CONTINUE_DEFAULT_TIMEOUT))
+                        .setConnectionRequestTimeout(TIMEOUT_FROM_CONNECTION_POOL);
         return new MantaClient(config);
     }
 }

@@ -19,7 +19,7 @@ import java.util.stream.Stream;
  */
 class EchoTransferClient implements TransferClient {
     @Override
-    public Stream<String> find() {
+    public Stream<FileDownload> find() {
         return null;
     }
 

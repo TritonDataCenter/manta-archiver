@@ -29,7 +29,7 @@ public interface TransferClient extends AutoCloseable {
      *
      * @return stream of remote objects
      */
-    Stream<String> find();
+    Stream<FileDownload> find();
 
     /**
      * Creates a directory and all required subdirectories.
