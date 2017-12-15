@@ -9,6 +9,7 @@ package com.joyent.manta.archiver;
 
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaMetadata;
+import com.joyent.manta.client.MantaObject;
 import com.joyent.manta.client.MantaObjectInputStream;
 import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.exception.MantaClientHttpResponseException;
@@ -41,6 +42,7 @@ import java.util.Iterator;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -58,6 +60,26 @@ class MantaTransferClient implements TransferClient {
     private static final String UNCOMPRESSED_SIZE_HEADER = "m-uncompressed-size";
     private static final String ORIGINAL_PATH_HEADER = "m-original-path";
     private static final String ORIGINAL_MD5_HEADER = "m-original-md5";
+
+    /**
+     * Function that converts a {@link MantaObject} to a {@link FileDownload}.
+     */
+    private static final Function<MantaObject, FileDownload> OBJ_TO_DOWNLOAD_FUNCTION = o -> {
+        final String mantaPath = o.getPath();
+
+        final Long lastModified;
+
+        if (o.getLastModifiedTime() != null) {
+            lastModified = o.getLastModifiedTime().getTime();
+        } else {
+            lastModified = null;
+        }
+
+        return new FileDownload(o.getContentLength(),
+                lastModified,
+                mantaPath,
+                o.isDirectory());
+    };
 
     private Set<String> dirCache = Collections.newSetFromMap(
             new LRUMap<>(DIRECTORY_CACHE_SIZE));
@@ -96,23 +118,20 @@ class MantaTransferClient implements TransferClient {
 
     @Override
     public Stream<FileDownload> find() {
-        return clientRef.get().find(mantaRoot)
-                .map(o -> {
-                    final String mantaPath = o.getPath();
+        try {
+            MantaObjectResponse head = clientRef.get().head(mantaRoot);
 
-                    final Long lastModified;
+            if (!head.isDirectory()) {
+                return Stream.of(OBJ_TO_DOWNLOAD_FUNCTION.apply(head));
+            }
+        } catch (IOException e) {
+            String msg = "Unable to find remote object";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", mantaRoot);
+            throw tce;
+        }
 
-                    if (o.getLastModifiedTime() != null) {
-                        lastModified = o.getLastModifiedTime().getTime();
-                    } else {
-                        lastModified = null;
-                    }
-
-                    return new FileDownload(o.getContentLength(),
-                            lastModified,
-                            mantaPath,
-                            o.isDirectory());
-                });
+        return clientRef.get().find(mantaRoot).map(OBJ_TO_DOWNLOAD_FUNCTION);
     }
 
     @Override
