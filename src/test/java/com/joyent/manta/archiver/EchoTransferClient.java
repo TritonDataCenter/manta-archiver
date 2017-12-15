@@ -7,6 +7,9 @@
  */
 package com.joyent.manta.archiver;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.OutputStream;
 import java.nio.file.Path;
@@ -18,6 +21,8 @@ import java.util.stream.Stream;
  * files transferred to STDOUT.
  */
 class EchoTransferClient implements TransferClient {
+    private static Logger LOG = LoggerFactory.getLogger(EchoTransferClient.class);
+
     @Override
     public Stream<FileDownload> find() {
         return null;
@@ -25,12 +30,12 @@ class EchoTransferClient implements TransferClient {
 
     @Override
     public void mkdirp(final String path, final DirectoryUpload upload) {
-        System.out.println("mkdirp: " + upload.getSourcePath() + " --> " + path);
+        LOG.trace("mkdirp: {} --> {}", upload.getSourcePath(), path);
     }
 
     @Override
     public void put(final String path, final FileUpload upload) {
-        System.out.println("put:    " + upload.getSourcePath() + " --> " + path);
+        LOG.trace("put:    {} --> {}", upload.getSourcePath(), path);
     }
 
     @Override
@@ -41,7 +46,7 @@ class EchoTransferClient implements TransferClient {
     @Override
     public String convertLocalPathToRemotePath(final Path sourcePath,
                                                final Path localRoot) {
-        return "/remote/" + localRoot;
+        return "/remote" + localRoot;
     }
 
     @Override
