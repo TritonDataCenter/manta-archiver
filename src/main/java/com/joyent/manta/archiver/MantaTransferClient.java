@@ -65,7 +65,15 @@ class MantaTransferClient implements TransferClient {
      * Function that converts a {@link MantaObject} to a {@link FileDownload}.
      */
     private static final Function<MantaObject, FileDownload> OBJ_TO_DOWNLOAD_FUNCTION = o -> {
-        final String mantaPath = o.getPath();
+        final String mantaPath;
+
+        // If we have been given a file with a trailing separator character,
+        // we fix it here, so that it doesn't impact downstream processes.
+        if (!o.isDirectory() && o.getPath().endsWith(MantaClient.SEPARATOR)) {
+            mantaPath = StringUtils.removeEnd(o.getPath(), MantaClient.SEPARATOR);
+        } else {
+            mantaPath = o.getPath();
+        }
 
         final Long lastModified;
 
@@ -85,7 +93,17 @@ class MantaTransferClient implements TransferClient {
             new LRUMap<>(DIRECTORY_CACHE_SIZE));
 
     private final AtomicReference<MantaClient> clientRef;
+
+    /**
+     * Path to the remote working directory.
+     */
     private final String mantaRoot;
+
+    /**
+     * When the remote path is pointing to a single file, this variable contains
+     * that single filename.
+     */
+    private final String singleFile;
 
     /**
      * Creates a new instance based on the specified Manta client and the
@@ -102,7 +120,35 @@ class MantaTransferClient implements TransferClient {
             this.clientRef = new AtomicReference<>(clientSupplier.get());
         }
 
-        this.mantaRoot = normalize(mantaRoot);
+        final String normalized = normalize(mantaRoot);
+
+        try {
+            MantaObjectResponse head = clientRef.get().head(normalized);
+
+            if (head.isDirectory()) {
+                this.mantaRoot = normalized;
+                this.singleFile = null;
+            } else {
+                String noSeparator = StringUtils.removeEnd(normalized, MantaClient.SEPARATOR);
+                String parent = FilenameUtils.getFullPath(noSeparator);
+                this.mantaRoot = parent;
+                this.singleFile = FilenameUtils.getName(noSeparator);
+            }
+        } catch (IOException e) {
+            if (e instanceof MantaClientHttpResponseException) {
+                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
+
+                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    String msg = String.format("Remote path does not exist: %s", normalized);
+                    throw new TransferClientException(msg);
+                }
+            }
+
+            String msg = "Error accessing remote Manta path";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", normalized);
+            throw tce;
+        }
 
         populateDirectoryCache();
     }
@@ -118,17 +164,17 @@ class MantaTransferClient implements TransferClient {
 
     @Override
     public Stream<FileDownload> find() {
-        try {
-            MantaObjectResponse head = clientRef.get().head(mantaRoot);
-
-            if (!head.isDirectory()) {
+        if (singleFile != null) {
+            try {
+                String path = mantaRoot + singleFile;
+                MantaObjectResponse head = clientRef.get().head(path);
                 return Stream.of(OBJ_TO_DOWNLOAD_FUNCTION.apply(head));
+            } catch (IOException e) {
+                String msg = "Unable to find remote object";
+                TransferClientException tce = new TransferClientException(msg, e);
+                tce.setContextValue("mantaPath", mantaRoot);
+                throw tce;
             }
-        } catch (IOException e) {
-            String msg = "Unable to find remote object";
-            TransferClientException tce = new TransferClientException(msg, e);
-            tce.setContextValue("mantaPath", mantaRoot);
-            throw tce;
         }
 
         return clientRef.get().find(mantaRoot).map(OBJ_TO_DOWNLOAD_FUNCTION);
