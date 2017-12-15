@@ -122,6 +122,14 @@ class MantaTransferClient implements TransferClient {
 
         final String normalized = normalize(mantaRoot);
 
+        // Early exit the constructor if there is no Manta client specified so
+        // that we can skip all associated checks and normalization logic.
+        if (clientSupplier == null) {
+            this.mantaRoot = normalized;
+            this.singleFile = null;
+            return;
+        }
+
         try {
             MantaObjectResponse head = clientRef.get().head(normalized);
 

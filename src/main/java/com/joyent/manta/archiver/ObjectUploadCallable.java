@@ -80,6 +80,8 @@ class ObjectUploadCallable implements Callable<Long> {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } catch (RuntimeException e) {
+            LOG.error("Error uploading file", e);
         }
 
         return totalProcessed;
