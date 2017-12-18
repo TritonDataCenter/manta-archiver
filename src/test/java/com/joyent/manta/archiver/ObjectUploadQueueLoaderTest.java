@@ -46,7 +46,7 @@ public class ObjectUploadQueueLoaderTest {
         long totalBytesTransferred = 0L;
 
         try {
-            while (numberTransferred < transferDetails.numberOfFiles) {
+            while (numberTransferred < transferDetails.numberOfObjects) {
                 final ObjectUpload upload = loader.getQueue().poll(1, TimeUnit.SECONDS);
 
                 if (upload != null) {
@@ -62,7 +62,7 @@ public class ObjectUploadQueueLoaderTest {
             executor.shutdownNow();
         }
 
-        Assert.assertEquals(numberTransferred, transferDetails.numberOfFiles,
+        Assert.assertEquals(numberTransferred, transferDetails.numberOfObjects,
                 "Number of actual files transferred doesn't equal the number enqueued");
         Assert.assertEquals(totalBytesTransferred, transferDetails.numberOfBytes,
                 "Number of bytes transferred doesn't equal the number enqueued");

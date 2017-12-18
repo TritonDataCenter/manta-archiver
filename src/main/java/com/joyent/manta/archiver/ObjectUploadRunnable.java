@@ -15,16 +15,15 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * {@link Callable} implementation that handles file uploads.
+ * {@link Runnable} implementation that handles file uploads.
  */
-class ObjectUploadCallable implements Callable<Long> {
-    private static final Logger LOG = LoggerFactory.getLogger(ObjectUploadCallable.class);
+class ObjectUploadRunnable implements Runnable {
+    private static final Logger LOG = LoggerFactory.getLogger(ObjectUploadRunnable.class);
 
     private final AtomicLong totalUploads;
     private final TransferQueue<ObjectUpload> queue;
@@ -43,7 +42,7 @@ class ObjectUploadCallable implements Callable<Long> {
      * @param localRoot local working directory
      * @param pb reference to progress bar to update
      */
-    ObjectUploadCallable(final AtomicLong totalUploads,
+    ObjectUploadRunnable(final AtomicLong totalUploads,
                          final TransferQueue<ObjectUpload> queue,
                          final long noOfObjectToUpload,
                          final TransferClient client,
@@ -58,9 +57,7 @@ class ObjectUploadCallable implements Callable<Long> {
     }
 
     @Override
-    public Long call() throws Exception {
-        long totalProcessed = 0L;
-
+    public void run() {
         try {
             while (totalUploads.get() < noOfObjectToUpload) {
                 final ObjectUpload upload = queue.poll(1, TimeUnit.SECONDS);
@@ -72,7 +69,6 @@ class ObjectUploadCallable implements Callable<Long> {
                 try {
                     uploadObject(upload);
                     totalUploads.incrementAndGet();
-                    totalProcessed++;
                 } catch (RuntimeException e) {
                     LOG.error("Error uploading file. Adding file back to the queue", e);
                     queue.put(upload);
@@ -83,8 +79,6 @@ class ObjectUploadCallable implements Callable<Long> {
         } catch (RuntimeException e) {
             LOG.error("Error uploading file", e);
         }
-
-        return totalProcessed;
     }
 
     /**

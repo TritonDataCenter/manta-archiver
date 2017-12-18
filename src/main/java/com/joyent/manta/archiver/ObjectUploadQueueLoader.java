@@ -186,8 +186,10 @@ class ObjectUploadQueueLoader {
      */
     void addObjectToQueue(final Path path) {
         try {
+            final File file = path.toFile();
+
             // Creates directory in temporary path
-            if (path.toFile().isDirectory()) {
+            if (file.isDirectory()) {
                 appendPaths(TEMP_PATH, path).toFile().mkdirs();
                 queue.transfer(new DirectoryUpload(path));
                 return;
@@ -195,14 +197,14 @@ class ObjectUploadQueueLoader {
 
             final PreprocessingInputStream in = readPath(path);
 
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Started compressing [{}] [{} bytes]",
+            if (LOG.isTraceEnabled() && !file.isDirectory()) {
+                LOG.trace("Started compressing [{}] [{} bytes]",
                         path, FileUtils.byteCountToDisplaySize(path.toFile().length()));
             }
 
             final FileUpload fileUpload = buildFileToUpload(in); // in is closed here
 
-            if (LOG.isDebugEnabled()) {
+            if (LOG.isDebugEnabled() && !file.isDirectory()) {
                 LOG.debug("Finished compressing [{}] [{} -> {} {}]",
                         fileUpload.getSourcePath(),
                         FileUtils.byteCountToDisplaySize(fileUpload.getUncompressedSize()),
@@ -215,7 +217,6 @@ class ObjectUploadQueueLoader {
             } else {
                 queue.put(fileUpload);
             }
-
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -246,9 +247,9 @@ class ObjectUploadQueueLoader {
                     }
 
                     transferDetails.numberOfBytes += size;
-                    transferDetails.numberOfFiles++;
+                    transferDetails.numberOfObjects++;
 
-                    executor.submit(() -> addObjectToQueue(p));
+                    executor.execute(() -> addObjectToQueue(p));
                 });
 
         return transferDetails;

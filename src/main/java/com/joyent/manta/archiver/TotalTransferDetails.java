@@ -13,6 +13,6 @@ package com.joyent.manta.archiver;
  */
 @SuppressWarnings("VisibilityModifier")
 class TotalTransferDetails {
-    long numberOfFiles = 0L;
+    long numberOfObjects = 0L;
     long numberOfBytes = 0L;
 }

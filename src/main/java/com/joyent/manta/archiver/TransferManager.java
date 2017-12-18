@@ -19,21 +19,14 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
-import java.util.Collection;
-import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -94,7 +87,7 @@ public class TransferManager implements AutoCloseable {
         final TransferQueue<ObjectUpload> queue = loader.getQueue();
 
         final TotalTransferDetails transferDetails = loader.uploadDirectoryContents(localRoot);
-        final long noOfObjectToUpload = transferDetails.numberOfFiles;
+        final long noOfObjectToUpload = transferDetails.numberOfObjects;
 
         if (noOfObjectToUpload < 1) {
             return;
@@ -105,7 +98,7 @@ public class TransferManager implements AutoCloseable {
 
         System.err.printf("Bulk upload to Manta : [%s] --> [%s]%s",
                 localRoot, client.getRemotePath(), System.lineSeparator());
-        System.err.printf("Total files to upload: %d%s", transferDetails.numberOfFiles,
+        System.err.printf("Total files to upload: %d%s", transferDetails.numberOfObjects,
                 System.lineSeparator());
         System.err.printf("Total size to upload : %s (%d)%s",
                 FileUtils.byteCountToDisplaySize(transferDetails.numberOfBytes),
@@ -118,40 +111,38 @@ public class TransferManager implements AutoCloseable {
                 transferDetails.numberOfBytes, ProgressBarStyle.ASCII);
 
         final AtomicLong totalUploads = new AtomicLong();
-        final Callable<Long> uploader = new ObjectUploadCallable(totalUploads,
+        final Runnable uploader = new ObjectUploadRunnable(totalUploads,
                 queue, noOfObjectToUpload, client, localRoot, pb);
-
-        final List<Callable<Long>> uploaders = Stream.generate(() -> uploader)
-                .limit(concurrentUploaders).collect(Collectors.toList());
 
         pb.start();
 
-        final List<Future<Long>> futures = uploaders.stream()
-                .map(uploaderExecutor::submit).collect(Collectors.toList());
-
-        while (!futures.stream().allMatch(Future::isDone)) {
-            Thread.sleep(WAIT_MILLIS_FOR_COMPLETION_CHECK);
-        }
-        LOG.debug("All futures have completed");
-
-        final long totalProcessed = sumOfAllFilesProcessed(futures);
-        LOG.debug("Total actually processed: {}", totalProcessed);
-
-        // This is where we block waiting for the uploaders to finish
-        while (totalUploads.get() < transferDetails.numberOfFiles) {
-            Thread.sleep(WAIT_MILLIS_FOR_COMPLETION_CHECK);
-        }
-
-        if (LOG.isInfoEnabled()) {
-            LOG.info("All uploads [{}/{}] have completed", totalUploads.get(),
-                    noOfObjectToUpload);
+        for (int i = 0; i < concurrentUploaders; i++) {
+            uploaderExecutor.execute(uploader);
         }
 
         LOG.debug("Shutting down object compression thread pool");
         loaderPool.shutdown();
         while (!loaderPool.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS));
 
-        shutdownUploads(uploaderExecutor);
+        LOG.debug("Shutting down object uploader thread pool");
+        uploaderExecutor.shutdown();
+        while (!uploaderExecutor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS));
+
+        if (totalUploads.get() != noOfObjectToUpload) {
+            pb.stop();
+
+            String msg = "Actual number of objects uploads differs from expected number";
+            TransferClientException e = new TransferClientException(msg);
+            e.setContextValue("expectNumberOfUploads", noOfObjectToUpload);
+            e.setContextValue("actualNumberOfUploads", totalUploads.get());
+            throw e;
+        }
+
+        if (LOG.isInfoEnabled()) {
+            LOG.info("All uploads [{}] have completed", totalUploads.get(),
+                    noOfObjectToUpload);
+        }
+
         pb.stop();
     }
 
@@ -323,34 +314,6 @@ public class TransferManager implements AutoCloseable {
                 System.lineSeparator());
 
         return verificationSuccess.get();
-    }
-
-    private static long sumOfAllFilesProcessed(final Collection<Future<Long>> futures) {
-        return futures.stream().map(f -> {
-            try {
-                return f.get();
-            } catch (ExecutionException e) {
-                LOG.error("Error processing upload", e);
-                return 0L;
-            } catch (CancellationException e) {
-                return 0L;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return 0L;
-            }
-        }).mapToLong(Long::longValue).sum();
-    }
-
-    @SuppressWarnings("EmptyStatement")
-    private void shutdownUploads(final ExecutorService uploaderExecutor)
-            throws InterruptedException {
-        LOG.debug("Shutting down uploader thread pool");
-        uploaderExecutor.shutdown();
-        while (!uploaderExecutor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS));
-
-        if (!uploaderExecutor.isShutdown()) {
-            uploaderExecutor.shutdownNow();
-        }
     }
 
     @SuppressWarnings("EmptyStatement")

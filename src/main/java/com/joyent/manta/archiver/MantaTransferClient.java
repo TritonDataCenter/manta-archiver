@@ -127,38 +127,37 @@ class MantaTransferClient implements TransferClient {
         if (clientSupplier == null) {
             this.mantaRoot = normalized;
             this.singleFile = null;
-            return;
-        }
+        } else {
+            try {
+                MantaObjectResponse head = clientRef.get().head(normalized);
 
-        try {
-            MantaObjectResponse head = clientRef.get().head(normalized);
-
-            if (head.isDirectory()) {
-                this.mantaRoot = normalized;
-                this.singleFile = null;
-            } else {
-                String noSeparator = StringUtils.removeEnd(normalized, MantaClient.SEPARATOR);
-                String parent = FilenameUtils.getFullPath(noSeparator);
-                this.mantaRoot = parent;
-                this.singleFile = FilenameUtils.getName(noSeparator);
-            }
-        } catch (IOException e) {
-            if (e instanceof MantaClientHttpResponseException) {
-                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
-
-                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
-                    String msg = String.format("Remote path does not exist: %s", normalized);
-                    throw new TransferClientException(msg);
+                if (head.isDirectory()) {
+                    this.mantaRoot = normalized;
+                    this.singleFile = null;
+                } else {
+                    String noSeparator = StringUtils.removeEnd(normalized, MantaClient.SEPARATOR);
+                    String parent = FilenameUtils.getFullPath(noSeparator);
+                    this.mantaRoot = parent;
+                    this.singleFile = FilenameUtils.getName(noSeparator);
                 }
+            } catch (IOException e) {
+                if (e instanceof MantaClientHttpResponseException) {
+                    MantaClientHttpResponseException mchre = (MantaClientHttpResponseException) e;
+
+                    if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                        String msg = String.format("Remote path does not exist: %s", normalized);
+                        throw new TransferClientException(msg);
+                    }
+                }
+
+                String msg = "Error accessing remote Manta path";
+                TransferClientException tce = new TransferClientException(msg, e);
+                tce.setContextValue("mantaPath", normalized);
+                throw tce;
             }
 
-            String msg = "Error accessing remote Manta path";
-            TransferClientException tce = new TransferClientException(msg, e);
-            tce.setContextValue("mantaPath", normalized);
-            throw tce;
+            populateDirectoryCache();
         }
-
-        populateDirectoryCache();
     }
 
     private void populateDirectoryCache() {
