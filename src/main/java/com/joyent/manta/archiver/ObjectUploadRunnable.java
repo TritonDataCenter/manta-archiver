@@ -121,8 +121,8 @@ class ObjectUploadRunnable implements Runnable {
             Files.deleteIfExists(upload.getTempPath());
             pb.stepBy(upload.getUncompressedSize());
 
-            if (LOG.isInfoEnabled()) {
-                LOG.info("Upload [{} {}] has completed",
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Upload [{} {}] has completed",
                         upload.getSourcePath(),
                         FileUtils.byteCountToDisplaySize(upload.getUncompressedSize()));
             }

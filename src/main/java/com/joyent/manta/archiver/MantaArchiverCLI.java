@@ -449,8 +449,6 @@ public class MantaArchiverCLI {
             try (TransferManager manager = new TransferManager(mantaTransferClient,
                     localRoot)) {
                 verificationSuccess = manager.verifyLocal();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
             } catch (RuntimeException e) {
                 System.err.println("Unrecoverable error verifying files on Manta");
                 e.printStackTrace(System.err);

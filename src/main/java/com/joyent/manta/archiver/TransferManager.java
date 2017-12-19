@@ -38,8 +38,6 @@ public class TransferManager implements AutoCloseable {
 
     private static final int EXECUTOR_SHUTDOWN_WAIT_SECS = 5;
 
-    private static final int WAIT_MILLIS_FOR_COMPLETION_CHECK = 1000;
-
     private final TransferClient client;
     private final Path localRoot;
 
@@ -67,7 +65,6 @@ public class TransferManager implements AutoCloseable {
      *
      * @throws InterruptedException thrown when a blocking operation is interrupted
      */
-    @SuppressWarnings("EmptyStatement")
     void uploadAll() throws InterruptedException {
         final ForkJoinPool loaderPool = new ForkJoinPool(
                 ForkJoinPool.getCommonPoolParallelism(),
@@ -122,11 +119,17 @@ public class TransferManager implements AutoCloseable {
 
         LOG.debug("Shutting down object compression thread pool");
         loaderPool.shutdown();
-        while (!loaderPool.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS));
+        while (!loaderPool.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS)) {
+            LOG.trace("Waiting for object preloader executor to shutdown");
+        }
 
         LOG.debug("Shutting down object uploader thread pool");
         uploaderExecutor.shutdown();
-        while (!uploaderExecutor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS));
+        while (!uploaderExecutor.awaitTermination(EXECUTOR_SHUTDOWN_WAIT_SECS, TimeUnit.SECONDS)) {
+            LOG.trace("Waiting for uploader executor to shutdown. Uploaded {}/{} objects. "
+                            + "{} objects pre-processed.",
+                    totalUploads.get(), noOfObjectToUpload, loader.getObjectsProcessed().get());
+        }
 
         if (totalUploads.get() != noOfObjectToUpload) {
             pb.stop();
@@ -215,9 +218,8 @@ public class TransferManager implements AutoCloseable {
      * and subdirectories are identical to the files on Manta.
      *
      * @return true when all files verified successfully
-     * @throws InterruptedException thrown when a blocking operation is interrupted
      */
-    boolean verifyLocal() throws InterruptedException {
+    boolean verifyLocal() {
         System.err.println("Maven Archiver - Verify Local");
         System.err.println();
 

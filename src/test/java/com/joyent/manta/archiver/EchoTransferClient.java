@@ -36,6 +36,7 @@ class EchoTransferClient implements TransferClient {
     @Override
     public void put(final String path, final FileUpload upload) {
         LOG.trace("put:    {} --> {}", upload.getSourcePath(), path);
+        upload.getTempPath().toFile().delete();
     }
 
     @Override

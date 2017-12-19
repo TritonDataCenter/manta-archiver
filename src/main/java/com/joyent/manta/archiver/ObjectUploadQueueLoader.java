@@ -30,6 +30,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static java.io.File.separator;
 
@@ -38,18 +39,20 @@ import static java.io.File.separator;
  * be copied to Manta.
  */
 class ObjectUploadQueueLoader {
+    static final Path TEMP_PATH = Paths.get(System.getProperty("java.io.tmpdir")
+            + separator + "manta-archiver");
+
     private static final Logger LOG = LoggerFactory.getLogger(ObjectUploadQueueLoader.class);
 
     private static final int FILE_READ_BUFFER = 16_384;
 
     private static final ObjectCompressor COMPRESSOR = new ObjectCompressor();
-    private static final Path TEMP_PATH = Paths.get(System.getProperty("java.io.tmpdir")
-            + separator + "manta-archiver");
 
     private final ForkJoinPool executor;
     private final TransferQueue<ObjectUpload> queue;
     private final int queuePreloadSize;
     private final AtomicInteger preloadedCount = new AtomicInteger();
+    private final AtomicLong objectsProcessed = new AtomicLong(0L);
 
     static {
         // Queue up deletion of temp files when process exits
@@ -59,7 +62,7 @@ class ObjectUploadQueueLoader {
             try {
                 FileUtils.forceDelete(TEMP_PATH.toFile());
             } catch (IOException e) {
-                LOG.info("Unable to delete temp files from path: " + TEMP_PATH, e);
+                LOG.warn("Unable to delete temp files from path: " + TEMP_PATH, e);
             }
         }));
     }
@@ -120,12 +123,21 @@ class ObjectUploadQueueLoader {
     PreprocessingOutputStream compressedTempFile(final Path path) {
         Path subPath = Paths.get(path + "." + ObjectCompressor.COMPRESSION_TYPE);
         Path tempPath = appendPaths(TEMP_PATH, subPath);
+        Path parent = tempPath.getParent();
 
         if (tempPath.toFile().exists()) {
             Path changedPath = Paths.get(tempPath.getFileName() + "-" + UUID.randomUUID());
             LOG.warn("Avoiding overwrite of path [{}] by changing file name to [{}]",
                     tempPath, changedPath);
             tempPath = changedPath;
+        } else if (!parent.toFile().exists()) {
+            if (!parent.toFile().mkdirs() && !parent.toFile().exists()) {
+                String msg = "Unable to create parent directory structure";
+                FileProcessingException fpe = new FileProcessingException(msg);
+                fpe.setContextValue("path", path);
+                fpe.setContextValue("parentDir", parent);
+                throw fpe;
+            }
         }
 
         try {
@@ -191,34 +203,38 @@ class ObjectUploadQueueLoader {
             // Creates directory in temporary path
             if (file.isDirectory()) {
                 appendPaths(TEMP_PATH, path).toFile().mkdirs();
-                queue.transfer(new DirectoryUpload(path));
-                return;
-            }
-
-            final PreprocessingInputStream in = readPath(path);
-
-            if (LOG.isTraceEnabled() && !file.isDirectory()) {
-                LOG.trace("Started compressing [{}] [{} bytes]",
-                        path, FileUtils.byteCountToDisplaySize(path.toFile().length()));
-            }
-
-            final FileUpload fileUpload = buildFileToUpload(in); // in is closed here
-
-            if (LOG.isDebugEnabled() && !file.isDirectory()) {
-                LOG.debug("Finished compressing [{}] [{} -> {} {}]",
-                        fileUpload.getSourcePath(),
-                        FileUtils.byteCountToDisplaySize(fileUpload.getUncompressedSize()),
-                        FileUtils.byteCountToDisplaySize(fileUpload.getCompressedSize()),
-                        fileUpload.getCompressionPercentage());
-            }
-
-            if (preloadedCount.getAndIncrement() > queuePreloadSize) {
-                queue.transfer(fileUpload);
+                queue.put(new DirectoryUpload(path));
             } else {
-                queue.put(fileUpload);
+                final PreprocessingInputStream in = readPath(path);
+
+                if (LOG.isTraceEnabled() && !file.isDirectory()) {
+                    LOG.trace("Started compressing [{}] [{} bytes]",
+                            path, FileUtils.byteCountToDisplaySize(path.toFile().length()));
+                }
+
+                final FileUpload fileUpload = buildFileToUpload(in); // in is closed here
+
+                if (LOG.isDebugEnabled() && !file.isDirectory()) {
+                    LOG.debug("Finished compressing [{}] [{} -> {} {}]",
+                            fileUpload.getSourcePath(),
+                            FileUtils.byteCountToDisplaySize(fileUpload.getUncompressedSize()),
+                            FileUtils.byteCountToDisplaySize(fileUpload.getCompressedSize()),
+                            fileUpload.getCompressionPercentage());
+                }
+
+                if (preloadedCount.getAndIncrement() > queuePreloadSize) {
+                    queue.transfer(fileUpload);
+                } else {
+                    queue.put(fileUpload);
+                }
             }
+
+            objectsProcessed.incrementAndGet();
         } catch (InterruptedException e) {
+            LOG.warn("Object preloader thread interrupted");
             Thread.currentThread().interrupt();
+        } catch (RuntimeException e) {
+            LOG.error("Object couldn't be properly enqueued", e);
         }
     }
 
@@ -260,6 +276,13 @@ class ObjectUploadQueueLoader {
      */
     TransferQueue<ObjectUpload> getQueue() {
         return queue;
+    }
+
+    /**
+     * @return total number of objects added to the queue
+     */
+    AtomicLong getObjectsProcessed() {
+        return objectsProcessed;
     }
 
     /**

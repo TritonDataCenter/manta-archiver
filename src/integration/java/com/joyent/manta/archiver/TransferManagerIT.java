@@ -7,7 +7,9 @@ package com.joyent.manta.archiver;/*
  */
 
 import com.joyent.manta.client.MantaClient;
+import org.apache.commons.io.FileUtils;
 import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -20,6 +22,11 @@ public class TransferManagerIT {
     private static final String MANTA_ROOT = "~~/stor/manta-archiver-test";
     private static final Supplier<MantaClient> MANTA_CLIENT_SUPPLIER =
             new MantaClientSupplier();
+
+    @BeforeMethod
+    public void setup() throws IOException {
+        FileUtils.deleteDirectory(ObjectUploadQueueLoader.TEMP_PATH.toFile());
+    }
 
     @AfterMethod
     public void cleanUp() throws IOException {

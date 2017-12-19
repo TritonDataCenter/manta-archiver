@@ -7,6 +7,8 @@
  */
 package com.joyent.manta.archiver;
 
+import org.apache.commons.io.FileUtils;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -15,6 +17,11 @@ import java.nio.file.Path;
 
 @Test
 public class TransferManagerTest {
+    @BeforeMethod
+    public void setup() throws IOException {
+        FileUtils.deleteDirectory(ObjectUploadQueueLoader.TEMP_PATH.toFile());
+    }
+
     public void canUploadAll() throws IOException {
         final TransferClient client = new EchoTransferClient();
         Path root = Files.createTempDirectory("archiver-");

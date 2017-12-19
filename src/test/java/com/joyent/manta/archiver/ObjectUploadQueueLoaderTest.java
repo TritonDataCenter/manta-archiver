@@ -7,11 +7,14 @@
  */
 package com.joyent.manta.archiver;
 
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.ForkJoinPool;
@@ -22,6 +25,11 @@ import static org.testng.Assert.assertEquals;
 @Test
 public class ObjectUploadQueueLoaderTest {
     private static Logger LOG = LoggerFactory.getLogger(ObjectUploadQueueLoaderTest.class);
+
+    @BeforeMethod
+    public void setup() throws IOException {
+        FileUtils.deleteDirectory(ObjectUploadQueueLoader.TEMP_PATH.toFile());
+    }
 
     public void canAppendPaths() {
         Path parent = Paths.get("/var/quackery");
