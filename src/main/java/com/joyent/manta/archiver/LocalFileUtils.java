@@ -32,7 +32,7 @@ final class LocalFileUtils {
      */
     static Stream<Path> directoryContentsStream(final Path root) {
         try {
-            return Files.walk(root);
+            return Files.walk(root).filter(p -> !Files.isSymbolicLink(p));
         } catch (IOException e) {
             String msg = "Unable to recursively traverse path";
             FileProcessingException fpe = new FileProcessingException(msg, e);
