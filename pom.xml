@@ -195,7 +195,7 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>${maven-shade-plugin}</version>
                 <configuration>
-                    <minimizeJar>true</minimizeJar>
+                    <minimizeJar>false</minimizeJar>
                     <artifactSet>
                         <includes>
                             <include>**</include>
