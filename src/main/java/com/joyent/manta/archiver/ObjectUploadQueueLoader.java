@@ -46,6 +46,8 @@ class ObjectUploadQueueLoader {
 
     private static final int FILE_READ_BUFFER = 16_384;
 
+    private static final int MIN_FILE_SIZE_TO_BLOCK_ON = 10_000;
+
     private static final ObjectCompressor COMPRESSOR = new ObjectCompressor();
 
     private final ForkJoinPool executor;
@@ -222,7 +224,9 @@ class ObjectUploadQueueLoader {
                             fileUpload.getCompressionPercentage());
                 }
 
-                if (preloadedCount.getAndIncrement() > queuePreloadSize) {
+                if (preloadedCount.getAndIncrement() > queuePreloadSize
+                        && queue.size() > queuePreloadSize
+                        && file.length() > MIN_FILE_SIZE_TO_BLOCK_ON) {
                     queue.transfer(fileUpload);
                 } else {
                     queue.put(fileUpload);
