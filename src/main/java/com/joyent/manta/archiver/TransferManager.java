@@ -229,7 +229,7 @@ public class TransferManager implements AutoCloseable {
         final String format = "[%s] %s <-> %s" + System.lineSeparator();
 
         try (Stream<Path> contents = LocalFileUtils.directoryContentsStream(localRoot)) {
-            contents.forEach(localPath -> {
+            contents.parallel().forEach(localPath -> {
                 String mantaPath = client.convertLocalPathToRemotePath(localPath, localRoot);
 
                 final VerificationResult result;
