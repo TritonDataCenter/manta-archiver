@@ -281,7 +281,9 @@ class MantaTransferClient implements TransferClient {
 
             final MantaMetadata metadata = new MantaMetadata();
             metadata.put(UNCOMPRESSED_SIZE_HEADER, Long.toString(upload.getUncompressedSize()));
-            metadata.put(ORIGINAL_PATH_HEADER, upload.getSourcePath().toString());
+
+            String sourcePath = MantaUtils.formatPath(upload.getSourcePath().toString());
+            metadata.put(ORIGINAL_PATH_HEADER, sourcePath);
             metadata.put(ORIGINAL_MD5_HEADER, base64Checksum);
 
             LOG.debug("Uploading file [{}] --> [{}]", upload.getSourcePath(), path);
