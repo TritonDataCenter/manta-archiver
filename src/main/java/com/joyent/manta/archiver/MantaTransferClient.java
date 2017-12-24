@@ -90,7 +90,7 @@ class MantaTransferClient implements TransferClient {
     };
 
     private Set<String> dirCache = Collections.newSetFromMap(
-            new LRUMap<>(DIRECTORY_CACHE_SIZE));
+            Collections.synchronizedMap(new LRUMap<>(DIRECTORY_CACHE_SIZE)));
 
     private final AtomicReference<MantaClient> clientRef;
 
