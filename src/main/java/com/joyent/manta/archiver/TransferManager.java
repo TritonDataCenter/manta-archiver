@@ -85,9 +85,9 @@ public class TransferManager implements AutoCloseable {
                         "uploader-thread-%d", "uploaders",
                         "UploaderThreadPool"));
 
-        final int noOfinitialAsyncObjectsToProcess = concurrentUploaders * 4;
+        final int preloadQueueSize = concurrentUploaders * 4;
         final ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(loaderPool,
-                noOfinitialAsyncObjectsToProcess);
+                preloadQueueSize);
         final TransferQueue<ObjectUpload> queue = loader.getQueue();
 
         // We queue up the directory traversal and file processing work asynchronously
