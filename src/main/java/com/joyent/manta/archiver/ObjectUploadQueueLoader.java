@@ -29,7 +29,6 @@ import java.util.UUID;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TransferQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static java.io.File.separator;
@@ -53,7 +52,6 @@ class ObjectUploadQueueLoader {
     private final ForkJoinPool executor;
     private final TransferQueue<ObjectUpload> queue;
     private final int queuePreloadSize;
-    private final AtomicInteger preloadedCount = new AtomicInteger();
     private final AtomicLong objectsProcessed = new AtomicLong(0L);
 
     static {
@@ -224,9 +222,7 @@ class ObjectUploadQueueLoader {
                             fileUpload.getCompressionPercentage());
                 }
 
-                if (preloadedCount.getAndIncrement() > queuePreloadSize
-                        && queue.size() > queuePreloadSize
-                        && file.length() > MIN_FILE_SIZE_TO_BLOCK_ON) {
+                if (queue.size() > queuePreloadSize && file.length() > MIN_FILE_SIZE_TO_BLOCK_ON) {
                     queue.transfer(fileUpload);
                 } else {
                     queue.put(fileUpload);
