@@ -20,13 +20,16 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 /**
@@ -78,17 +81,42 @@ public class TransferManager implements AutoCloseable {
                         "uploader-thread-%d", "uploaders",
                         "UploaderThreadPool"));
 
-        final int noOfinitialAsyncObjectsToProcess = concurrentUploaders * 2;
+        final int noOfinitialAsyncObjectsToProcess = concurrentUploaders * 4;
         final ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(loaderPool,
                 noOfinitialAsyncObjectsToProcess);
         final TransferQueue<ObjectUpload> queue = loader.getQueue();
 
-        final TotalTransferDetails transferDetails = loader.uploadDirectoryContents(localRoot);
-        final long noOfObjectToUpload = transferDetails.numberOfObjects;
+        // We queue up the directory traversal and file processing work asynchronously
+        // so that we can start uploading right away and we don't need to wait for the
+        // entire recursive traversal to complete.
+        Future<TotalTransferDetails> transferDetailsFuture = uploaderExecutor.submit(
+                () -> loader.uploadDirectoryContents(localRoot));
 
-        if (noOfObjectToUpload < 1) {
+        final AtomicReference<ProgressBar> pbRef = new AtomicReference<>();
+        final AtomicLong totalUploads = new AtomicLong(0L);
+        final AtomicLong noOfObjectToUpload = new AtomicLong(Long.MAX_VALUE);
+
+        final Runnable uploader = new ObjectUploadRunnable(totalUploads,
+                queue, noOfObjectToUpload, client, localRoot, pbRef);
+
+        // This starts all of the uploader threads
+        for (int i = 0; i < concurrentUploaders; i++) {
+            uploaderExecutor.execute(uploader);
+        }
+
+        final TotalTransferDetails transferDetails;
+
+        try {
+             transferDetails = transferDetailsFuture.get();
+        } catch (ExecutionException e) {
+            throw new FileProcessingException(e);
+        }
+
+        if (transferDetails.numberOfObjects < 1) {
             return;
         }
+
+        noOfObjectToUpload.set(transferDetails.numberOfObjects);
 
         System.err.println("Maven Archiver - Upload");
         System.err.println();
@@ -107,15 +135,9 @@ public class TransferManager implements AutoCloseable {
         final ProgressBar pb = new ProgressBar(uploadMsg,
                 transferDetails.numberOfBytes, ProgressBarStyle.ASCII);
 
-        final AtomicLong totalUploads = new AtomicLong();
-        final Runnable uploader = new ObjectUploadRunnable(totalUploads,
-                queue, noOfObjectToUpload, client, localRoot, pb);
-
         pb.start();
 
-        for (int i = 0; i < concurrentUploaders; i++) {
-            uploaderExecutor.execute(uploader);
-        }
+        pbRef.set(pb);
 
         LOG.debug("Shutting down object compression thread pool");
         loaderPool.shutdown();
@@ -131,12 +153,12 @@ public class TransferManager implements AutoCloseable {
                     totalUploads.get(), noOfObjectToUpload, loader.getObjectsProcessed().get());
         }
 
-        if (totalUploads.get() != noOfObjectToUpload) {
+        if (totalUploads.get() != noOfObjectToUpload.get()) {
             pb.stop();
 
             String msg = "Actual number of objects uploads differs from expected number";
             TransferClientException e = new TransferClientException(msg);
-            e.setContextValue("expectNumberOfUploads", noOfObjectToUpload);
+            e.setContextValue("expectedNumberOfUploads", noOfObjectToUpload);
             e.setContextValue("actualNumberOfUploads", totalUploads.get());
             throw e;
         }
