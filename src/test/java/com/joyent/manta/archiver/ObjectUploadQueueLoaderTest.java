@@ -15,6 +15,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.ForkJoinPool;
@@ -41,13 +42,17 @@ public class ObjectUploadQueueLoaderTest {
         assertEquals(actual.toString(), expected.toString());
     }
 
-    public void canProcessDirectory() {
+    public void canProcessDirectory() throws IOException {
+        final Path root = Files.createTempDirectory("manta-archiver-test");
+        FileUtils.forceDeleteOnExit(root.toFile());
+
+        FakeDirectoryStructureCreator.createFakeDirectoriesAndFiles(root);
+
         ForkJoinPool executor = new ForkJoinPool(ForkJoinPool.getCommonPoolParallelism(),
                 ForkJoinPool.defaultForkJoinWorkerThreadFactory,
                 new LoggingUncaughtExceptionHandler("UnitTestForkJoinPool"),
                 true);
         ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(executor,10);
-        Path root = Paths.get("/opt/duck");
 
         TotalTransferDetails transferDetails = loader.uploadDirectoryContents(root);
         long numberTransferred = 0L;
