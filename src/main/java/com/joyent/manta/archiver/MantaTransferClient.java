@@ -542,6 +542,10 @@ class MantaTransferClient implements TransferClient {
         return this.mantaRoot;
     }
 
+    Cache<String, Boolean> getDirCache() {
+        return dirCache;
+    }
+
     @Override
     public void close() {
         clientRef.get().close();

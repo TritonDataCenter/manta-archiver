@@ -7,6 +7,7 @@
  */
 package com.joyent.manta.archiver;
 
+import com.google.common.cache.Cache;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
@@ -18,6 +19,8 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -30,6 +33,7 @@ import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
@@ -95,6 +99,19 @@ public class TransferManager implements AutoCloseable {
         final AtomicReference<ProgressBar> pbRef = new AtomicReference<>();
         final AtomicLong totalUploads = new AtomicLong(0L);
         final AtomicLong noOfObjectToUpload = new AtomicLong(Long.MAX_VALUE);
+
+        final Cache<String, Boolean> dirCache;
+        if (client instanceof MantaTransferClient) {
+            dirCache = ((MantaTransferClient) client).getDirCache();
+        } else {
+            dirCache = null;
+        }
+
+        UploadStatusFunction statusFunction = new UploadStatusFunction(
+                transferDetailsFuture, totalUploads, noOfObjectToUpload,
+                dirCache, queue, loaderPool);
+
+        registerSighupFunction(statusFunction);
 
         final Runnable uploader = new ObjectUploadRunnable(totalUploads,
                 queue, noOfObjectToUpload, client, localRoot, pbRef);
@@ -344,5 +361,25 @@ public class TransferManager implements AutoCloseable {
     @Override
     public void close() {
         client.close();
+    }
+
+    /**
+     * Safely registers a SIGHUP handler that works for systems that support signals.
+     * This seemingly complex way of loading the sun.misc.* classes is important because
+     * it allows us to not explicitly depend on them thereby making this method safe to
+     * run on any JVM.
+     */
+    public void registerSighupFunction(Function<Void, Optional<RuntimeException>> function) {
+        try {
+            Class<?> signalClass = Class.forName("sun.misc.Signal");
+            Class<?> signalHandlerClass = Class.forName("sun.misc.SignalHandler");
+            Constructor<?> signalClassConstructor = signalClass.getConstructor(String.class);
+            Method handle = signalClass.getMethod("handle", signalClass, signalHandlerClass);
+            Object signalInstance = signalClassConstructor.newInstance("HUP");
+            handle.invoke(null, signalInstance, new SighupHandler(function));
+        } catch (ReflectiveOperationException e) {
+            final String msg = "Unable to register signal handler via reflection";
+                LOG.warn(msg, e);
+        }
     }
 }
