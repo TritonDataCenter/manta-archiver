@@ -28,6 +28,7 @@ public class UploadStatusFunction implements Function<Void, Optional<RuntimeExce
     private final TransferQueue<ObjectUpload> uploadQueue;
     private final ForkJoinPool preloadForkJoinPool;
 
+    @SuppressWarnings("JavadocMethod")
     public UploadStatusFunction(final Future<TotalTransferDetails> transferDetailsFuture,
                                 final AtomicLong totalUploads,
                                 final AtomicLong noOfObjectToUpload,
@@ -89,7 +90,7 @@ public class UploadStatusFunction implements Function<Void, Optional<RuntimeExce
         }
     }
 
-    private static void printfln(final String pattern, Object... params) {
+    private static void printfln(final String pattern, final Object... params) {
         System.err.printf(pattern, params);
         System.err.println();
     }

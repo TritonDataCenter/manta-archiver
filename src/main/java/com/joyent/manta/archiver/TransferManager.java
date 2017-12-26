@@ -368,8 +368,10 @@ public class TransferManager implements AutoCloseable {
      * This seemingly complex way of loading the sun.misc.* classes is important because
      * it allows us to not explicitly depend on them thereby making this method safe to
      * run on any JVM.
+     *
+     * @param function function to run upon SIGHUP
      */
-    public void registerSighupFunction(Function<Void, Optional<RuntimeException>> function) {
+    public void registerSighupFunction(final Function<Void, Optional<RuntimeException>> function) {
         try {
             Class<?> signalClass = Class.forName("sun.misc.Signal");
             Class<?> signalHandlerClass = Class.forName("sun.misc.SignalHandler");

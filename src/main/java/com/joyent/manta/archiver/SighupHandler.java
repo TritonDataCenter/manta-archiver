@@ -23,7 +23,12 @@ public class SighupHandler implements SignalHandler {
 
     private final Function<Void, Optional<RuntimeException>> function;
 
-    public SighupHandler(Function<Void, Optional<RuntimeException>> function) {
+    /**
+     * Create a new SIGHUP handler class.
+     *
+     * @param function function to execution upon SIGHUP
+     */
+    public SighupHandler(final Function<Void, Optional<RuntimeException>> function) {
         this.function = function;
     }
 
