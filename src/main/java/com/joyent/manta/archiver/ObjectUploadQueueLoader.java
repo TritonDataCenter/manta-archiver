@@ -20,10 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ForkJoinPool;
@@ -98,7 +95,7 @@ class ObjectUploadQueueLoader {
      * @param path path to read
      * @return stream of path contents
      */
-    PreprocessingInputStream readPath(final Path path) {
+    static PreprocessingInputStream readPath(final Path path) {
         final File file = path.toFile();
         try {
             InputStream origin = Files.newInputStream(path, StandardOpenOption.READ);
@@ -122,17 +119,17 @@ class ObjectUploadQueueLoader {
      * @param path path to the source file that will be written to the stream
      * @return stream configured to write to a compressed temp file
      */
-    PreprocessingOutputStream compressedTempFile(final Path path) {
+    static PreprocessingOutputStream compressedTempFile(final Path path) {
         Path subPath = Paths.get(path + "." + ObjectCompressor.COMPRESSION_TYPE);
         Path tempPath = appendPaths(TEMP_PATH, subPath);
         Path parent = tempPath.getParent();
 
-        if (tempPath.toFile().exists()) {
+        if (Files.exists(tempPath, LinkOption.NOFOLLOW_LINKS)) {
             Path changedPath = Paths.get(tempPath.getFileName() + "-" + UUID.randomUUID());
             LOG.warn("Avoiding overwrite of path [{}] by changing file name to [{}]",
                     tempPath, changedPath);
             tempPath = changedPath;
-        } else if (!parent.toFile().exists()) {
+        } else if (!Files.exists(parent, LinkOption.NOFOLLOW_LINKS)) {
             if (!parent.toFile().mkdirs() && !parent.toFile().exists()) {
                 String msg = "Unable to create parent directory structure";
                 FileProcessingException fpe = new FileProcessingException(msg);
@@ -160,11 +157,11 @@ class ObjectUploadQueueLoader {
      * Compresses a source file, writes it to a temp directory and returns an
      * object with metadata about the object.
      *
-     * @param in source stream
+     * @param in source stream (this stream will be closed)
      * @return object representing metadata and path of the temp file on the
      *         local filesystem
      */
-    FileUpload buildFileToUpload(final PreprocessingInputStream in) {
+    static FileUpload buildFileToUpload(final PreprocessingInputStream in) {
         final Path path = in.getPath();
         final PreprocessingOutputStream out = compressedTempFile(path);
 
@@ -190,6 +187,25 @@ class ObjectUploadQueueLoader {
     }
 
     /**
+     * Reads the object data from the specified path and creates a
+     * {@link FileUpload} object based on the data from the specified path.
+     *
+     * @param path path to read
+     * @return a file upload object with a compressed file in a temp path
+     */
+    static FileUpload fileToUploadFromPath(final Path path) {
+        final PreprocessingInputStream in = readPath(path);
+
+        if (LOG.isTraceEnabled() && !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+            LOG.trace("Started compressing [{}] [{} bytes]",
+                    path, FileUtils.byteCountToDisplaySize(path.toFile().length()));
+        }
+
+        // This method closes the InputStream
+        return buildFileToUpload(in);
+    }
+
+    /**
      * Adds an object to the queue for eventual upload. This method will preload
      * <code>queuePreloadSize</code> to the queue and then it will block until
      * an uploader becomes available before transferring another item to the
@@ -207,14 +223,7 @@ class ObjectUploadQueueLoader {
                 appendPaths(TEMP_PATH, path).toFile().mkdirs();
                 queue.put(new DirectoryUpload(path));
             } else {
-                final PreprocessingInputStream in = readPath(path);
-
-                if (LOG.isTraceEnabled() && !file.isDirectory()) {
-                    LOG.trace("Started compressing [{}] [{} bytes]",
-                            path, FileUtils.byteCountToDisplaySize(path.toFile().length()));
-                }
-
-                final FileUpload fileUpload = buildFileToUpload(in); // in is closed here
+                final FileUpload fileUpload = fileToUploadFromPath(path);
 
                 if (LOG.isDebugEnabled() && !file.isDirectory()) {
                     LOG.debug("Finished compressing [{}] [{} -> {} {}]",

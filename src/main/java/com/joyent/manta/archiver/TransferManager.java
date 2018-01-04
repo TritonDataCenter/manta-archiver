@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -219,9 +220,15 @@ public class TransferManager implements AutoCloseable {
      *
      * @return true when all files verified successfully
      */
-    boolean verifyLocal() {
+    boolean verifyLocal(final boolean fix) {
         System.err.println("Maven Archiver - Verify Local");
         System.err.println();
+
+        if (fix) {
+            System.err.println("Running in verify fix mode. Missing or "
+                    + "corrupted files will be uploaded");
+            System.err.println();
+        }
 
         final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
         final int statusMsgSize = 19;
@@ -248,6 +255,23 @@ public class TransferManager implements AutoCloseable {
 
                 System.err.printf(format, StringUtils.center(result.toString(), statusMsgSize),
                         localPath, mantaPath);
+
+                if (fix && !result.equals(VerificationResult.OK)) {
+                    System.err.printf(format, StringUtils.center("FIXING", statusMsgSize),
+                            localPath, mantaPath);
+                    if (localPath.toFile().isDirectory()) {
+                        client.mkdirp(mantaPath, new DirectoryUpload(localPath));
+                    } else {
+                        FileUpload upload = ObjectUploadQueueLoader.fileToUploadFromPath(localPath);
+                        client.put(mantaPath, upload);
+
+                        try {
+                            Files.deleteIfExists(upload.getTempPath());
+                        } catch (IOException e) {
+                            LOG.error("Unable to delete temp file", e);
+                        }
+                    }
+                }
             });
         }
 

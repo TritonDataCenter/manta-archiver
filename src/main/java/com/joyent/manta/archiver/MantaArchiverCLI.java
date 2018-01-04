@@ -20,6 +20,7 @@ import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.client.crypto.SecretKeyUtils;
 import com.joyent.manta.config.ConfigContext;
 import com.joyent.manta.util.MantaVersion;
+import org.apache.commons.lang3.BooleanUtils;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
@@ -436,6 +437,9 @@ public class MantaArchiverCLI {
         @CommandLine.Parameters(paramLabel = "manta-directory",
                 index = "1", description = "directory in Manta to verify to")
         private String mantaDirectory;
+        @CommandLine.Option(names = {"-f", "--fix"}, help = true,
+                type = Boolean.class, description = "reupload objects that don't match remote")
+        private Boolean fix;
 
         @Override
         public void run() {
@@ -448,7 +452,7 @@ public class MantaArchiverCLI {
 
             try (TransferManager manager = new TransferManager(mantaTransferClient,
                     localRoot)) {
-                verificationSuccess = manager.verifyLocal();
+                verificationSuccess = manager.verifyLocal(BooleanUtils.isTrue(fix));
             } catch (RuntimeException e) {
                 System.err.println("Unrecoverable error verifying files on Manta");
                 e.printStackTrace(System.err);
