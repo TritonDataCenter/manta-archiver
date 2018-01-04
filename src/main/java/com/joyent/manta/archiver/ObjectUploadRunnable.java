@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@link Runnable} implementation that handles file uploads.
@@ -27,10 +28,12 @@ class ObjectUploadRunnable implements Runnable {
 
     private final AtomicLong totalUploads;
     private final TransferQueue<ObjectUpload> queue;
-    private final long noOfObjectToUpload;
+    private final AtomicLong noOfObjectToUpload;
     private final TransferClient client;
     private final Path localRoot;
-    private final ProgressBar pb;
+    private final AtomicReference<ProgressBar> pb;
+    private volatile boolean pbInitialized = false;
+    private final AtomicLong totalTransferred = new AtomicLong(0L);
 
     /**
      * Creates a new instance.
@@ -44,10 +47,10 @@ class ObjectUploadRunnable implements Runnable {
      */
     ObjectUploadRunnable(final AtomicLong totalUploads,
                          final TransferQueue<ObjectUpload> queue,
-                         final long noOfObjectToUpload,
+                         final AtomicLong noOfObjectToUpload,
                          final TransferClient client,
                          final Path localRoot,
-                         final ProgressBar pb) {
+                         final AtomicReference<ProgressBar> pb) {
         this.totalUploads = totalUploads;
         this.queue = queue;
         this.noOfObjectToUpload = noOfObjectToUpload;
@@ -59,7 +62,7 @@ class ObjectUploadRunnable implements Runnable {
     @Override
     public void run() {
         try {
-            while (totalUploads.get() < noOfObjectToUpload) {
+            while (totalUploads.get() < noOfObjectToUpload.get()) {
                 final ObjectUpload upload = queue.poll(1, TimeUnit.SECONDS);
 
                 if (upload == null) {
@@ -119,7 +122,23 @@ class ObjectUploadRunnable implements Runnable {
         // Clean up the temp upload file so we don't leave it lingering
         try {
             Files.deleteIfExists(upload.getTempPath());
-            pb.stepBy(upload.getUncompressedSize());
+            totalTransferred.addAndGet(upload.getUncompressedSize());
+
+            // We increment the progress bar as uploads are processed if the
+            // progress bar is available.
+            if (pbInitialized && pb.get() != null) {
+                pb.get().stepBy(upload.getUncompressedSize());
+            } else {
+                // We wait for when the progress becomes available and then
+                // increment it all at once with the total amount of bytes
+                // transferred.
+                synchronized (this) {
+                    if (!pbInitialized && pb.get() != null) {
+                        pbInitialized = true;
+                        pb.get().stepBy(totalTransferred.get());
+                    }
+                }
+            }
 
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Upload [{} {}] has completed",

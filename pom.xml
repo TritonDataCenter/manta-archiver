@@ -65,6 +65,7 @@
         <dependency.checkstyle.version>8.2</dependency.checkstyle.version>
         <dependency.picocli.version>1.0.1</dependency.picocli.version>
         <dependency.java-manta.version>3.2.2-SNAPSHOT</dependency.java-manta.version>
+        <dependency.guava.version>23.6-jre</dependency.guava.version>
         <dependency.commons-lang>3.6</dependency.commons-lang>
         <dependency.commons-compress.version>1.14</dependency.commons-compress.version>
         <dependency.commons-math.version>3.6.1</dependency.commons-math.version>
@@ -115,6 +116,12 @@
                     <artifactId>commons-logging</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>${dependency.guava.version}</version>
         </dependency>
 
         <dependency>

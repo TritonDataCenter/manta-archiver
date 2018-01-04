@@ -7,6 +7,8 @@
  */
 package com.joyent.manta.archiver;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaMetadata;
 import com.joyent.manta.client.MantaObject;
@@ -17,11 +19,11 @@ import com.joyent.manta.http.MantaHttpHeaders;
 import com.joyent.manta.util.MantaUtils;
 import com.twmacinta.util.FastMD5Digest;
 import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.collections4.map.LRUMap;
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.input.CountingInputStream;
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.bouncycastle.crypto.Digest;
@@ -37,10 +39,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.Optional;
-import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -56,7 +57,8 @@ import static java.util.Objects.requireNonNull;
 class MantaTransferClient implements TransferClient {
     private static final Logger LOG = LoggerFactory.getLogger(MantaTransferClient.class);
 
-    private static final int DIRECTORY_CACHE_SIZE = 4096;
+    private static final int DIRECTORY_CACHE_SIZE = 16384;
+    private static final int CACHE_ACCESS_EXPIRATION_HOURS = 4;
     private static final String UNCOMPRESSED_SIZE_HEADER = "m-uncompressed-size";
     private static final String ORIGINAL_PATH_HEADER = "m-original-path";
     private static final String ORIGINAL_MD5_HEADER = "m-original-md5";
@@ -89,8 +91,11 @@ class MantaTransferClient implements TransferClient {
                 o.isDirectory());
     };
 
-    private Set<String> dirCache = Collections.newSetFromMap(
-            Collections.synchronizedMap(new LRUMap<>(DIRECTORY_CACHE_SIZE)));
+    private Cache<String, Boolean> dirCache = CacheBuilder.newBuilder()
+            .maximumSize(DIRECTORY_CACHE_SIZE)
+            .softValues()
+            .expireAfterAccess(CACHE_ACCESS_EXPIRATION_HOURS, TimeUnit.HOURS)
+            .build();
 
     private final AtomicReference<MantaClient> clientRef;
 
@@ -163,9 +168,9 @@ class MantaTransferClient implements TransferClient {
     private void populateDirectoryCache() {
         LOG.debug("Populating directory cache");
         if (mantaRoot.endsWith(MantaClient.SEPARATOR)) {
-            dirCache.add(mantaRoot);
+            dirCache.put(mantaRoot, true);
         } else {
-            dirCache.add(mantaRoot + MantaClient.SEPARATOR);
+            dirCache.put(mantaRoot + MantaClient.SEPARATOR, true);
         }
     }
 
@@ -189,7 +194,7 @@ class MantaTransferClient implements TransferClient {
 
     @Override
     public void mkdirp(final String path, final DirectoryUpload upload) {
-        if (dirCache.contains(path)) {
+        if (BooleanUtils.toBoolean(dirCache.getIfPresent(path))) {
             LOG.debug("Directory is already in cache [{}]", path);
             return;
         }
@@ -204,7 +209,7 @@ class MantaTransferClient implements TransferClient {
             throw tce;
         }
 
-        dirCache.add(path);
+        dirCache.put(path, true);
     }
 
     @Override
@@ -251,7 +256,7 @@ class MantaTransferClient implements TransferClient {
         }
 
         try {
-            if (!dirCache.contains(dir)) {
+            if (!BooleanUtils.toBoolean(dirCache.getIfPresent(dir))) {
                 LOG.debug("Parent directory is already not in cache [{}] for file", dir, path);
                 clientRef.get().putDirectory(dir, true);
             }
@@ -535,6 +540,10 @@ class MantaTransferClient implements TransferClient {
     @Override
     public String getRemotePath() {
         return this.mantaRoot;
+    }
+
+    Cache<String, Boolean> getDirCache() {
+        return dirCache;
     }
 
     @Override

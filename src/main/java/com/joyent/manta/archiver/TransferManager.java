@@ -7,6 +7,7 @@
  */
 package com.joyent.manta.archiver;
 
+import com.google.common.cache.Cache;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
@@ -18,16 +19,22 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.Files;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
@@ -79,17 +86,55 @@ public class TransferManager implements AutoCloseable {
                         "uploader-thread-%d", "uploaders",
                         "UploaderThreadPool"));
 
-        final int noOfinitialAsyncObjectsToProcess = concurrentUploaders * 2;
+        final int preloadQueueSize = concurrentUploaders * 4;
         final ObjectUploadQueueLoader loader = new ObjectUploadQueueLoader(loaderPool,
-                noOfinitialAsyncObjectsToProcess);
+                preloadQueueSize);
         final TransferQueue<ObjectUpload> queue = loader.getQueue();
 
-        final TotalTransferDetails transferDetails = loader.uploadDirectoryContents(localRoot);
-        final long noOfObjectToUpload = transferDetails.numberOfObjects;
+        // We queue up the directory traversal and file processing work asynchronously
+        // so that we can start uploading right away and we don't need to wait for the
+        // entire recursive traversal to complete.
+        Future<TotalTransferDetails> transferDetailsFuture = uploaderExecutor.submit(
+                () -> loader.uploadDirectoryContents(localRoot));
 
-        if (noOfObjectToUpload < 1) {
+        final AtomicReference<ProgressBar> pbRef = new AtomicReference<>();
+        final AtomicLong totalUploads = new AtomicLong(0L);
+        final AtomicLong noOfObjectToUpload = new AtomicLong(Long.MAX_VALUE);
+
+        final Cache<String, Boolean> dirCache;
+        if (client instanceof MantaTransferClient) {
+            dirCache = ((MantaTransferClient) client).getDirCache();
+        } else {
+            dirCache = null;
+        }
+
+        UploadStatusFunction statusFunction = new UploadStatusFunction(
+                transferDetailsFuture, totalUploads, noOfObjectToUpload,
+                dirCache, queue, loaderPool);
+
+        registerSighupFunction(statusFunction);
+
+        final Runnable uploader = new ObjectUploadRunnable(totalUploads,
+                queue, noOfObjectToUpload, client, localRoot, pbRef);
+
+        // This starts all of the uploader threads
+        for (int i = 0; i < concurrentUploaders; i++) {
+            uploaderExecutor.execute(uploader);
+        }
+
+        final TotalTransferDetails transferDetails;
+
+        try {
+             transferDetails = transferDetailsFuture.get();
+        } catch (ExecutionException e) {
+            throw new FileProcessingException(e);
+        }
+
+        if (transferDetails.numberOfObjects < 1) {
             return;
         }
+
+        noOfObjectToUpload.set(transferDetails.numberOfObjects);
 
         System.err.println("Maven Archiver - Upload");
         System.err.println();
@@ -108,15 +153,9 @@ public class TransferManager implements AutoCloseable {
         final ProgressBar pb = new ProgressBar(uploadMsg,
                 transferDetails.numberOfBytes, ProgressBarStyle.ASCII);
 
-        final AtomicLong totalUploads = new AtomicLong();
-        final Runnable uploader = new ObjectUploadRunnable(totalUploads,
-                queue, noOfObjectToUpload, client, localRoot, pb);
-
         pb.start();
 
-        for (int i = 0; i < concurrentUploaders; i++) {
-            uploaderExecutor.execute(uploader);
-        }
+        pbRef.set(pb);
 
         LOG.debug("Shutting down object compression thread pool");
         loaderPool.shutdown();
@@ -132,12 +171,12 @@ public class TransferManager implements AutoCloseable {
                     totalUploads.get(), noOfObjectToUpload, loader.getObjectsProcessed().get());
         }
 
-        if (totalUploads.get() != noOfObjectToUpload) {
+        if (totalUploads.get() != noOfObjectToUpload.get()) {
             pb.stop();
 
             String msg = "Actual number of objects uploads differs from expected number";
             TransferClientException e = new TransferClientException(msg);
-            e.setContextValue("expectNumberOfUploads", noOfObjectToUpload);
+            e.setContextValue("expectedNumberOfUploads", noOfObjectToUpload);
             e.setContextValue("actualNumberOfUploads", totalUploads.get());
             throw e;
         }
@@ -346,5 +385,27 @@ public class TransferManager implements AutoCloseable {
     @Override
     public void close() {
         client.close();
+    }
+
+    /**
+     * Safely registers a SIGHUP handler that works for systems that support signals.
+     * This seemingly complex way of loading the sun.misc.* classes is important because
+     * it allows us to not explicitly depend on them thereby making this method safe to
+     * run on any JVM.
+     *
+     * @param function function to run upon SIGHUP
+     */
+    public void registerSighupFunction(final Function<Void, Optional<RuntimeException>> function) {
+        try {
+            Class<?> signalClass = Class.forName("sun.misc.Signal");
+            Class<?> signalHandlerClass = Class.forName("sun.misc.SignalHandler");
+            Constructor<?> signalClassConstructor = signalClass.getConstructor(String.class);
+            Method handle = signalClass.getMethod("handle", signalClass, signalHandlerClass);
+            Object signalInstance = signalClassConstructor.newInstance("HUP");
+            handle.invoke(null, signalInstance, new SighupHandler(function));
+        } catch (ReflectiveOperationException e) {
+            final String msg = "Unable to register signal handler via reflection";
+                LOG.warn(msg, e);
+        }
     }
 }
