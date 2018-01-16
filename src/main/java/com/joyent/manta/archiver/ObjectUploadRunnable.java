@@ -90,7 +90,9 @@ class ObjectUploadRunnable implements Runnable {
      * @param upload object to upload.
      */
     void uploadObject(final ObjectUpload upload) {
-        if (upload.isDirectory()) {
+        if (upload.getClass().equals(SymbolicLinkUpload.class)) {
+            uploadLink((SymbolicLinkUpload)upload);
+        } else if (upload.isDirectory()) {
             createDirectory((DirectoryUpload)upload);
         } else {
             uploadFile((FileUpload)upload);
@@ -106,6 +108,17 @@ class ObjectUploadRunnable implements Runnable {
                 upload.getSourcePath(), localRoot);
 
         client.mkdirp(mantaDir, upload);
+    }
+
+    /**
+     * Uploads a link to the remote data store.
+     * @param upload link to upload
+     */
+    void uploadLink(final SymbolicLinkUpload upload) {
+        final String mantaPath = client.convertLocalPathToRemotePath(
+                upload.getSourcePath(), localRoot);
+
+        client.put(mantaPath, upload);
     }
 
     /**

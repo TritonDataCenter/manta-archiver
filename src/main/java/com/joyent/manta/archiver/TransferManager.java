@@ -19,8 +19,10 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.util.Optional;
@@ -210,15 +212,15 @@ public class TransferManager implements AutoCloseable {
         final AtomicLong totalObjectsProcessed = new AtomicLong(0L);
 
         try (Stream<FileDownload> downloads = client.find()) {
-            downloads.forEach(remoteObject -> {
+            downloads.forEach(fileDownload -> {
                 totalObjects.incrementAndGet();
 
-                final Path path = client.convertRemotePathToLocalPath(remoteObject.getRemotePath(), localRoot);
+                final Path path = client.convertRemotePathToLocalPath(fileDownload.getRemotePath(), localRoot);
                 final File file = path.toFile();
 
-                if (remoteObject.isDirectory()) {
-                    if (file.exists() && file.lastModified() != remoteObject.getLastModified()) {
-                        if (!file.setLastModified(remoteObject.getLastModified())) {
+                if (fileDownload.isDirectory() && !fileDownload.isLink()) {
+                    if (file.exists() && file.lastModified() != fileDownload.getLastModified()) {
+                        if (!file.setLastModified(fileDownload.getLastModified())) {
                             LOG.warn("Unable to set last modified time for directory: {}",
                                     file);
                         }
@@ -236,7 +238,8 @@ public class TransferManager implements AutoCloseable {
                     }
 
                     Runnable download = new ObjectDownloadRunnable(
-                            path, client, remoteObject.getRemotePath(), verificationSuccess, totalObjectsProcessed);
+                            path, client, fileDownload, verificationSuccess,
+                            totalObjectsProcessed);
                     downloadExecutor.execute(download);
                 }
             });
@@ -280,12 +283,23 @@ public class TransferManager implements AutoCloseable {
 
                 final VerificationResult result;
 
-                if (localPath.toFile().isDirectory()) {
+                if (Files.isSymbolicLink(localPath)) {
+                    result = client.verifyLink(mantaPath, localPath);
+                } else if (Files.isDirectory(localPath, LinkOption.NOFOLLOW_LINKS)) {
                     result = client.verifyDirectory(mantaPath);
                 } else {
-                    final File file = localPath.toFile();
+                    final long size;
+
+                    try {
+                        size = Files.size(localPath);
+                    } catch (IOException e) {
+                        String msg = String.format("Unable to get the size of "
+                                + "local file: %s", localPath);
+                        throw new UncheckedIOException(msg, e);
+                    }
+
                     final byte[] checksum = LocalFileUtils.checksum(localPath);
-                    result = client.verifyFile(mantaPath, file.length(), checksum);
+                    result = client.verifyFile(mantaPath, size, checksum);
                 }
 
                 if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
@@ -298,7 +312,10 @@ public class TransferManager implements AutoCloseable {
                 if (fix && !result.equals(VerificationResult.OK)) {
                     System.err.printf(format, StringUtils.center("FIXING", statusMsgSize),
                             localPath, mantaPath);
-                    if (localPath.toFile().isDirectory()) {
+                    if (Files.isSymbolicLink(localPath)) {
+                        SymbolicLinkUpload upload = new SymbolicLinkUpload(localPath);
+                        client.put(mantaPath, upload);
+                    } else if (Files.isDirectory(localPath, LinkOption.NOFOLLOW_LINKS)) {
                         client.mkdirp(mantaPath, new DirectoryUpload(localPath));
                     } else {
                         FileUpload upload = ObjectUploadQueueLoader.fileToUploadFromPath(localPath);
@@ -343,8 +360,8 @@ public class TransferManager implements AutoCloseable {
 
         try (Stream<FileDownload> files = client.find();
              OutputStream out = new NullOutputStream()) {
-            // Only process files and no directories
-            files.filter(f -> !f.isDirectory()).forEach(file -> {
+            // Only process files (no links and no directories)
+            files.filter(f -> !f.isDirectory() && !f.isLink()).forEach(file -> {
                 totalFiles.incrementAndGet();
 
                 final Runnable verify = () -> {

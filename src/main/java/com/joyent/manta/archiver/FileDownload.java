@@ -22,6 +22,7 @@ class FileDownload implements Serializable {
     private final Long lastModified;
     private final String remotePath;
     private final boolean isDirectory;
+    private final boolean isLink;
 
     /**
      * Creates a new instance.
@@ -34,11 +35,13 @@ class FileDownload implements Serializable {
     FileDownload(final Long size,
                  final Long lastModified,
                  final String remotePath,
-                 final boolean isDirectory) {
+                 final boolean isDirectory,
+                 final boolean isLink) {
         this.size = size;
         this.lastModified = lastModified;
         this.remotePath = remotePath;
         this.isDirectory = isDirectory;
+        this.isLink = isLink;
     }
 
     long getSize() {
@@ -57,6 +60,10 @@ class FileDownload implements Serializable {
         return isDirectory;
     }
 
+    boolean isLink() {
+        return isLink;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) {
@@ -69,12 +76,13 @@ class FileDownload implements Serializable {
         return size == that.size
                 && lastModified == that.lastModified
                 && Objects.equals(remotePath, that.remotePath)
-                && Objects.equals(isDirectory, that.isDirectory);
+                && Objects.equals(isDirectory, that.isDirectory)
+                && Objects.equals(isLink, that.isLink);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(size, lastModified, remotePath, isDirectory);
+        return Objects.hash(size, lastModified, remotePath, isDirectory, isLink);
     }
 
     @Override
@@ -84,6 +92,7 @@ class FileDownload implements Serializable {
                 .append("lastModified", lastModified)
                 .append("remotePath", remotePath)
                 .append("isDirectory", isDirectory)
+                .append("isLink", isLink)
                 .toString();
     }
 }

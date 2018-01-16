@@ -32,13 +32,21 @@ public enum VerificationResult {
      */
     NOT_FILE,
     /**
+     * Local object is a link but remote object is not a link.
+     */
+    NOT_LINK,
+    /**
      * Local object size does not match remote object size.
      */
     WRONG_SIZE,
     /**
      * Local object checksum does not match remote object checksum.
      */
-    CHECKSUM_MISMATCH;
+    CHECKSUM_MISMATCH,
+    /**
+     * Local link path is different that remote link path.
+     */
+    LINK_MISMATCH;
 
     /**
      * Maximum size of enum as string (used for centering text).

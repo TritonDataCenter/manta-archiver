@@ -16,7 +16,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -30,7 +32,7 @@ class ObjectDownloadRunnable implements Runnable {
 
     private Path path;
     private TransferClient client;
-    private String remoteObject;
+    private FileDownload fileDownload;
     private AtomicBoolean verificationSuccess;
     private AtomicLong totalObjectsProcessed;
 
@@ -39,18 +41,18 @@ class ObjectDownloadRunnable implements Runnable {
      *
      * @param path path to local file to write remote file to
      * @param client reference to transfer client
-     * @param remoteObject path to remote object
+     * @param fileDownload remote object
      * @param verificationSuccess atomic boolean flag indicated everything succeeded
      * @param totalObjectsProcessed atomic long counting total files downlaoded
      */
     ObjectDownloadRunnable(final Path path,
                            final TransferClient client,
-                           final String remoteObject,
+                           final FileDownload fileDownload,
                            final AtomicBoolean verificationSuccess,
                            final AtomicLong totalObjectsProcessed) {
         this.path = path;
         this.client = client;
-        this.remoteObject = remoteObject;
+        this.fileDownload = fileDownload;
         this.verificationSuccess = verificationSuccess;
         this.totalObjectsProcessed = totalObjectsProcessed;
     }
@@ -60,14 +62,17 @@ class ObjectDownloadRunnable implements Runnable {
         try {
             final File file = path.toFile();
 
-            if (localFileIsTheSameAsRemote(file)) {
+            if (localFileIsTheSameAsRemote(path)) {
                 String centered = StringUtils.center("EXISTS", VerificationResult.MAX_STRING_SIZE);
-                System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
+                System.err.printf(OUTPUT_FORMAT, centered, fileDownload, path);
                 return;
             }
 
+            System.out.println(fileDownload);
+
             try (OutputStream out = Files.newOutputStream(path)) {
-                final VerificationResult result = client.download(remoteObject, out,
+                final VerificationResult result = client.download(
+                        fileDownload.getRemotePath(), out,
                         Optional.of(file));
 
                 if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
@@ -75,12 +80,12 @@ class ObjectDownloadRunnable implements Runnable {
                 }
 
                 String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
-                System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
+                System.err.printf(OUTPUT_FORMAT, centered, fileDownload.getRemotePath(), path);
             } catch (IOException e) {
                 String msg = "Unable to write file";
                 TransferClientException tce = new TransferClientException(msg, e);
                 tce.setContextValue("localPath", path);
-                tce.setContextValue("mantaPath", remoteObject);
+                tce.setContextValue("mantaPath", fileDownload);
                 throw tce;
             }
         } finally {
@@ -88,21 +93,39 @@ class ObjectDownloadRunnable implements Runnable {
         }
     }
 
-    private boolean localFileIsTheSameAsRemote(final File file) {
-        if (!file.exists()) {
+    private boolean localFileIsTheSameAsRemote(final Path path) {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
             return false;
         }
 
+        if (Files.isSymbolicLink(path)) {
+            if (!fileDownload.isLink()) {
+                return false;
+            }
+
+            try {
+                final Path resolvedLink = Files.readSymbolicLink(path);
+                return client.verifyLink(fileDownload.getRemotePath(),
+                        resolvedLink).equals(VerificationResult.OK);
+            } catch (IOException e) {
+                String msg = String.format("Unable to process symbolic link: %s",
+                        path);
+                LOG.error(msg, e);
+                return false;
+            }
+        }
+
         try {
-            final long size = file.length();
-            final byte[] checksum = MD5.getHash(file);
+            final long size = Files.size(path);
+            final byte[] checksum = MD5.getHash(path.toFile());
 
             // Don't download if we already have the file
-            if (client.verifyFile(remoteObject, size, checksum).equals(VerificationResult.OK)) {
+            if (client.verifyFile(fileDownload.getRemotePath(),
+                    size, checksum).equals(VerificationResult.OK)) {
                 return true;
             }
         } catch (RuntimeException | IOException e) {
-            String msg = String.format("Unable to checksum file: %s", file);
+            String msg = String.format("Unable to checksum file: %s", path);
             LOG.error(msg, e);
         }
 

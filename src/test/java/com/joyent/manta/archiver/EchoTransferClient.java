@@ -40,6 +40,11 @@ class EchoTransferClient implements TransferClient {
     }
 
     @Override
+    public void put(final String path, final SymbolicLinkUpload upload) {
+
+    }
+
+    @Override
     public int getMaximumConcurrentConnections() {
         return 12;
     }
@@ -70,11 +75,20 @@ class EchoTransferClient implements TransferClient {
         return null;
     }
 
+    @Override
+    public VerificationResult verifyLink(final String remotePath, final Path localResolvedPath) {
+        return null;
+    }
 
     @Override
     public VerificationResult download(final String remotePath,
                                        final OutputStream out,
                                        final Optional<File> file) {
+        return null;
+    }
+
+    @Override
+    public String get(final String remotePath) {
         return null;
     }
 

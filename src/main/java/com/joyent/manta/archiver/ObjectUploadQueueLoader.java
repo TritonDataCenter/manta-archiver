@@ -217,7 +217,10 @@ class ObjectUploadQueueLoader {
             final File file = path.toFile();
 
             // Creates directory in temporary path
-            if (file.isDirectory()) {
+            if (Files.isSymbolicLink(path)) {
+                SymbolicLinkUpload linkUpload = new SymbolicLinkUpload(path);
+                queue.put(linkUpload);
+            } else if (file.isDirectory()) {
                 appendPaths(TEMP_PATH, path).toFile().mkdirs();
                 queue.put(new DirectoryUpload(path));
             } else {
