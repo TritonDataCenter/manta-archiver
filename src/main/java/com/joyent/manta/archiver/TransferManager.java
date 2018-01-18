@@ -11,20 +11,18 @@ import com.google.common.cache.Cache;
 import me.tongfei.progressbar.ProgressBar;
 import me.tongfei.progressbar.ProgressBarStyle;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.output.NullOutputStream;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.Files;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -218,7 +216,7 @@ public class TransferManager implements AutoCloseable {
                 final Path path = client.convertRemotePathToLocalPath(fileDownload.getRemotePath(), localRoot);
                 final File file = path.toFile();
 
-                if (fileDownload.isDirectory() && !fileDownload.isLink()) {
+                if (fileDownload.isDirectory()) {
                     if (file.exists() && file.lastModified() != fileDownload.getLastModified()) {
                         if (!file.setLastModified(fileDownload.getLastModified())) {
                             LOG.warn("Unable to set last modified time for directory: {}",
@@ -302,14 +300,14 @@ public class TransferManager implements AutoCloseable {
                     result = client.verifyFile(mantaPath, size, checksum);
                 }
 
-                if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
+                if (verificationSuccess.get() && !result.isOk()) {
                     verificationSuccess.set(false);
                 }
 
                 System.err.printf(format, StringUtils.center(result.toString(), statusMsgSize),
                         localPath, mantaPath);
 
-                if (fix && !result.equals(VerificationResult.OK)) {
+                if (fix && !result.isOk()) {
                     System.err.printf(format, StringUtils.center("FIXING", statusMsgSize),
                             localPath, mantaPath);
                     if (Files.isSymbolicLink(localPath)) {
@@ -358,17 +356,16 @@ public class TransferManager implements AutoCloseable {
         final AtomicLong totalFiles = new AtomicLong(0L);
         final AtomicLong totalFilesProcessed = new AtomicLong(0L);
 
-        try (Stream<FileDownload> files = client.find();
-             OutputStream out = new NullOutputStream()) {
+        try (Stream<FileDownload> files = client.find()) {
             // Only process files (no links and no directories)
             files.filter(f -> !f.isDirectory() && !f.isLink()).forEach(file -> {
                 totalFiles.incrementAndGet();
 
                 final Runnable verify = () -> {
                     final VerificationResult result = client.download(
-                            file.getRemotePath(), out, Optional.empty());
+                            file.getRemotePath(), Optional.empty());
 
-                    if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
+                    if (verificationSuccess.get() && !result.isOk()) {
                         verificationSuccess.set(false);
                     }
 
@@ -380,10 +377,6 @@ public class TransferManager implements AutoCloseable {
 
                 verifyExecutor.execute(verify);
             });
-        } catch (IOException e) {
-            String msg = "Unable to verify remote files";
-            TransferClientException tce = new TransferClientException(msg, e);
-            throw tce;
         }
 
         verifyExecutor.shutdown();

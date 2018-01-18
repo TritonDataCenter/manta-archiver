@@ -16,6 +16,10 @@ public enum VerificationResult {
      */
     OK,
     /**
+     * Local and remote links match.
+     */
+    LINK_OK,
+    /**
      * Remote object is missing the headers needed to verify.
      */
     MISSING_HEADERS,
@@ -52,4 +56,11 @@ public enum VerificationResult {
      * Maximum size of enum as string (used for centering text).
      */
     public static final int MAX_STRING_SIZE = 19;
+
+    /**
+     * @return true if verification is successful
+     */
+    public boolean isOk() {
+        return this.equals(OK) || this.equals(LINK_OK);
+    }
 }

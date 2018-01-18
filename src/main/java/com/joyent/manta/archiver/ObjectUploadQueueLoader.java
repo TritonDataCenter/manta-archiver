@@ -44,7 +44,7 @@ class ObjectUploadQueueLoader {
 
     private static final int MIN_FILE_SIZE_TO_BLOCK_ON = 10_000;
 
-    private static final ObjectCompressor COMPRESSOR = new ObjectCompressor();
+    private static final ObjectCompressor COMPRESSOR = ObjectCompressor.INSTANCE;
 
     private final ForkJoinPool executor;
     private final TransferQueue<ObjectUpload> queue;

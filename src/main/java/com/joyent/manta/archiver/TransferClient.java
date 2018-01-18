@@ -7,8 +7,6 @@
  */
 package com.joyent.manta.archiver;
 
-import java.io.File;
-import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -89,11 +87,10 @@ public interface TransferClient extends AutoCloseable {
      * the object's metadata.
      *
      * @param remotePath path to remote file
-     * @param out local stream to write data to
-     * @param file optional file to update with last modified time or other metadata
+     * @param path optional path to write data to or update with latest metadata
      * @return enum representing verification status
      */
-    VerificationResult download(String remotePath, OutputStream out, Optional<File> file);
+    VerificationResult download(String remotePath, Optional<Path> path);
 
     /**
      * Gets the contents of a remote file as a String.

@@ -7,6 +7,7 @@
  */
 package com.joyent.manta.archiver;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 
 import java.io.Serializable;
@@ -22,7 +23,7 @@ class FileDownload implements Serializable {
     private final Long lastModified;
     private final String remotePath;
     private final boolean isDirectory;
-    private final boolean isLink;
+    private Boolean isLink;
 
     /**
      * Creates a new instance.
@@ -36,12 +37,26 @@ class FileDownload implements Serializable {
                  final Long lastModified,
                  final String remotePath,
                  final boolean isDirectory,
-                 final boolean isLink) {
+                 final Boolean isLink) {
         this.size = size;
         this.lastModified = lastModified;
         this.remotePath = remotePath;
         this.isDirectory = isDirectory;
         this.isLink = isLink;
+    }
+
+    /**
+     * Creates a new instance.
+     *
+     * @param size uncompressed size of file to download
+     * @param lastModified remote last modified time in epoch milliseconds
+     * @param remotePath remote Manta path
+     */
+    FileDownload(final Long size,
+                 final Long lastModified,
+                 final String remotePath,
+                 final boolean isDirectory) {
+        this(size, lastModified, remotePath, isDirectory, null);
     }
 
     long getSize() {
@@ -61,7 +76,12 @@ class FileDownload implements Serializable {
     }
 
     boolean isLink() {
-        return isLink;
+        return BooleanUtils.toBoolean(isLink);
+    }
+
+    FileDownload setLink(final boolean link) {
+        isLink = link;
+        return this;
     }
 
     @Override

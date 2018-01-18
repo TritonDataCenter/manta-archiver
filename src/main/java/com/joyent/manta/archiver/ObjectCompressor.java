@@ -24,6 +24,11 @@ public class ObjectCompressor {
      */
     public static final String COMPRESSION_TYPE = CompressorStreamFactory.XZ;
 
+    /**
+     * Instance for easy access to a single copy of this object.
+     */
+    public static final ObjectCompressor INSTANCE = new ObjectCompressor();
+
     private static final CompressorStreamFactory COMPRESSOR_STREAM_FACTORY =
             new CompressorStreamFactory();
 
