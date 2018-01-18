@@ -258,6 +258,7 @@ public class TransferManager implements AutoCloseable {
      * Verifies that all of the files in the specified local directory
      * and subdirectories are identical to the files on Manta.
      *
+     * @param fix when true we upload any missing files
      * @return true when all files verified successfully
      */
     boolean verifyLocal(final boolean fix) {

@@ -32,6 +32,7 @@ class FileDownload implements Serializable {
      * @param lastModified remote last modified time in epoch milliseconds
      * @param remotePath remote Manta path
      * @param isDirectory flag indicating if the object is a directory
+     * @param isLink flag indicating if the object is a symbolic link
      */
     FileDownload(final Long size,
                  final Long lastModified,
@@ -51,6 +52,7 @@ class FileDownload implements Serializable {
      * @param size uncompressed size of file to download
      * @param lastModified remote last modified time in epoch milliseconds
      * @param remotePath remote Manta path
+     * @param isDirectory flag indicating if the object is a directory
      */
     FileDownload(final Long size,
                  final Long lastModified,
@@ -79,6 +81,12 @@ class FileDownload implements Serializable {
         return BooleanUtils.toBoolean(isLink);
     }
 
+    /**
+     * Sets a flag indicating that an object is a symbolic link.
+     *
+     * @param link true if link
+     * @return reference to the current instance
+     */
     FileDownload setLink(final boolean link) {
         isLink = link;
         return this;

@@ -87,19 +87,19 @@ class ObjectDownloadRunnable implements Runnable {
         }
     }
 
-    private boolean localFileIsTheSameAsRemote(final Path path) {
-        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+    private boolean localFileIsTheSameAsRemote(final Path localPath) {
+        if (!Files.exists(localPath, LinkOption.NOFOLLOW_LINKS)) {
             return false;
         }
 
-        if (Files.isSymbolicLink(path)) {
+        if (Files.isSymbolicLink(localPath)) {
             try {
-                final Path resolvedLink = Files.readSymbolicLink(path);
+                final Path resolvedLink = Files.readSymbolicLink(localPath);
                 return client.verifyLink(fileDownload.getRemotePath(),
                         resolvedLink).equals(VerificationResult.LINK_OK);
             } catch (IOException e) {
                 String msg = String.format("Unable to process symbolic link: %s",
-                        path);
+                        localPath);
                 LOG.error(msg, e);
                 return false;
             } catch (UncheckedIOException e) {
@@ -109,7 +109,7 @@ class ObjectDownloadRunnable implements Runnable {
                     return false;
                 } else {
                     String msg = String.format("Unable to process symbolic link: %s",
-                            path);
+                            localPath);
                     LOG.error(msg, e);
                     return false;
                 }
@@ -117,8 +117,8 @@ class ObjectDownloadRunnable implements Runnable {
         }
 
         try {
-            final long size = Files.size(path);
-            final byte[] checksum = MD5.getHash(path.toFile());
+            final long size = Files.size(localPath);
+            final byte[] checksum = MD5.getHash(localPath.toFile());
 
             // Don't download if we already have the file
             if (client.verifyFile(fileDownload.getRemotePath(),
@@ -126,7 +126,7 @@ class ObjectDownloadRunnable implements Runnable {
                 return true;
             }
         } catch (RuntimeException | IOException e) {
-            String msg = String.format("Unable to checksum file: %s", path);
+            String msg = String.format("Unable to checksum file: %s", localPath);
             LOG.error(msg, e);
         }
 

@@ -51,7 +51,7 @@ public interface TransferClient extends AutoCloseable {
      * @param path path to upload to
      * @param upload upload object to read the link path from
      */
-    void put(final String path, final SymbolicLinkUpload upload);
+    void put(String path, SymbolicLinkUpload upload);
 
     /**
      * Verifies that the specified directory exists on the remote file system.
