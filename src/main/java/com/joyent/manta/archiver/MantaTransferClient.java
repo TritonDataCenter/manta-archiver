@@ -693,9 +693,7 @@ class MantaTransferClient implements TransferClient {
 
         if (isDirectory && !filename.isEmpty() && !filename.endsWith(MantaClient.SEPARATOR)) {
             builder.append(MantaClient.SEPARATOR);
-        } else if (Files.isSymbolicLink(sourcePath)) {
-            // Don't append any extensions for symlinks
-        } else if (!isDirectory) {
+        } else if (!isDirectory && !Files.isSymbolicLink(sourcePath)) {
             builder.append(".").append(ObjectCompressor.COMPRESSION_TYPE);
         }
 

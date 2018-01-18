@@ -22,10 +22,15 @@ import java.util.Objects;
 /**
  * Class that represents a symbolic link to be added to Manta.
  */
-public class SymbolicLinkUpload implements ObjectUpload {
+class SymbolicLinkUpload implements ObjectUpload {
     private final Path sourcePath;
 
-    public SymbolicLinkUpload(final Path sourcePath) {
+    /**
+     * Creates a new instance representing link in the specified path.
+     *
+     * @param sourcePath path to symbolic link
+     */
+    SymbolicLinkUpload(final Path sourcePath) {
         Validate.isTrue(Files.isSymbolicLink(sourcePath),
                 "Specified path %s is not a symbolic link",
                 sourcePath);
@@ -42,7 +47,10 @@ public class SymbolicLinkUpload implements ObjectUpload {
         return false;
     }
 
-    public Path resolvedPath() {
+    /**
+     * @return returns the path of a symbolic link
+     */
+    Path resolvedPath() {
         try {
             return Files.readSymbolicLink(sourcePath);
         } catch (IOException e) {
@@ -52,6 +60,9 @@ public class SymbolicLinkUpload implements ObjectUpload {
         }
     }
 
+    /**
+     * @return returns the last modified time of a symbolic link
+     */
     Instant getLastModified() {
         try {
             return Files.getLastModifiedTime(sourcePath, LinkOption.NOFOLLOW_LINKS)
@@ -63,7 +74,10 @@ public class SymbolicLinkUpload implements ObjectUpload {
         }
     }
 
-    public byte[] linkPathAsUtf8() {
+    /**
+     * @return returns the byte representation of the symbolic link target path
+     */
+    byte[] linkPathAsUtf8() {
         final Path resolved = resolvedPath();
         return resolved.toString().getBytes(StandardCharsets.UTF_8);
     }
