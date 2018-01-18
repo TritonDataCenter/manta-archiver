@@ -10,8 +10,6 @@ package com.joyent.manta.archiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -37,6 +35,11 @@ class EchoTransferClient implements TransferClient {
     public void put(final String path, final FileUpload upload) {
         LOG.trace("put:    {} --> {}", upload.getSourcePath(), path);
         upload.getTempPath().toFile().delete();
+    }
+
+    @Override
+    public void put(final String path, final SymbolicLinkUpload upload) {
+
     }
 
     @Override
@@ -70,11 +73,19 @@ class EchoTransferClient implements TransferClient {
         return null;
     }
 
+    @Override
+    public VerificationResult verifyLink(final String remotePath, final Path localResolvedPath) {
+        return null;
+    }
 
     @Override
     public VerificationResult download(final String remotePath,
-                                       final OutputStream out,
-                                       final Optional<File> file) {
+                                       final Optional<Path> path) {
+        return null;
+    }
+
+    @Override
+    public String get(final String remotePath) {
         return null;
     }
 

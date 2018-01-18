@@ -12,10 +12,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,7 +31,7 @@ class ObjectDownloadRunnable implements Runnable {
 
     private Path path;
     private TransferClient client;
-    private String remoteObject;
+    private FileDownload fileDownload;
     private AtomicBoolean verificationSuccess;
     private AtomicLong totalObjectsProcessed;
 
@@ -39,18 +40,18 @@ class ObjectDownloadRunnable implements Runnable {
      *
      * @param path path to local file to write remote file to
      * @param client reference to transfer client
-     * @param remoteObject path to remote object
+     * @param fileDownload remote object
      * @param verificationSuccess atomic boolean flag indicated everything succeeded
      * @param totalObjectsProcessed atomic long counting total files downlaoded
      */
     ObjectDownloadRunnable(final Path path,
                            final TransferClient client,
-                           final String remoteObject,
+                           final FileDownload fileDownload,
                            final AtomicBoolean verificationSuccess,
                            final AtomicLong totalObjectsProcessed) {
         this.path = path;
         this.client = client;
-        this.remoteObject = remoteObject;
+        this.fileDownload = fileDownload;
         this.verificationSuccess = verificationSuccess;
         this.totalObjectsProcessed = totalObjectsProcessed;
     }
@@ -58,51 +59,74 @@ class ObjectDownloadRunnable implements Runnable {
     @Override
     public void run() {
         try {
-            final File file = path.toFile();
-
-            if (localFileIsTheSameAsRemote(file)) {
+            if (localFileIsTheSameAsRemote(path)) {
                 String centered = StringUtils.center("EXISTS", VerificationResult.MAX_STRING_SIZE);
-                System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
+                System.err.printf(OUTPUT_FORMAT, centered, fileDownload.getRemotePath(), path);
                 return;
             }
 
-            try (OutputStream out = Files.newOutputStream(path)) {
-                final VerificationResult result = client.download(remoteObject, out,
-                        Optional.of(file));
+            final VerificationResult result = client.download(
+                    fileDownload.getRemotePath(), Optional.of(path));
 
-                if (verificationSuccess.get() && !result.equals(VerificationResult.OK)) {
-                    verificationSuccess.set(false);
-                }
+            fileDownload.setLink(VerificationResult.LINK_OK.equals(result));
 
-                String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
-                System.err.printf(OUTPUT_FORMAT, centered, remoteObject, path);
-            } catch (IOException e) {
-                String msg = "Unable to write file";
-                TransferClientException tce = new TransferClientException(msg, e);
-                tce.setContextValue("localPath", path);
-                tce.setContextValue("mantaPath", remoteObject);
-                throw tce;
+            if (verificationSuccess.get() && !result.isOk()) {
+                verificationSuccess.set(false);
             }
+
+            String centered = StringUtils.center(result.toString(), VerificationResult.MAX_STRING_SIZE);
+            System.err.printf(OUTPUT_FORMAT, centered, fileDownload.getRemotePath(), path);
+        } catch (RuntimeException e) {
+            if (e instanceof TransferClientException) {
+                ((TransferClientException)e).setContextValue("fileDownload", fileDownload);
+            }
+
+            LOG.error("Error downloading object", e);
         } finally {
             totalObjectsProcessed.incrementAndGet();
         }
     }
 
-    private boolean localFileIsTheSameAsRemote(final File file) {
-        if (!file.exists()) {
+    private boolean localFileIsTheSameAsRemote(final Path path) {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
             return false;
         }
 
+        if (Files.isSymbolicLink(path)) {
+            try {
+                final Path resolvedLink = Files.readSymbolicLink(path);
+                return client.verifyLink(fileDownload.getRemotePath(),
+                        resolvedLink).equals(VerificationResult.LINK_OK);
+            } catch (IOException e) {
+                String msg = String.format("Unable to process symbolic link: %s",
+                        path);
+                LOG.error(msg, e);
+                return false;
+            } catch (UncheckedIOException e) {
+                final IOException cause = e.getCause();
+
+                if (cause instanceof NoSuchFileException) {
+                    return false;
+                } else {
+                    String msg = String.format("Unable to process symbolic link: %s",
+                            path);
+                    LOG.error(msg, e);
+                    return false;
+                }
+            }
+        }
+
         try {
-            final long size = file.length();
-            final byte[] checksum = MD5.getHash(file);
+            final long size = Files.size(path);
+            final byte[] checksum = MD5.getHash(path.toFile());
 
             // Don't download if we already have the file
-            if (client.verifyFile(remoteObject, size, checksum).equals(VerificationResult.OK)) {
+            if (client.verifyFile(fileDownload.getRemotePath(),
+                    size, checksum).equals(VerificationResult.OK)) {
                 return true;
             }
         } catch (RuntimeException | IOException e) {
-            String msg = String.format("Unable to checksum file: %s", file);
+            String msg = String.format("Unable to checksum file: %s", path);
             LOG.error(msg, e);
         }
 

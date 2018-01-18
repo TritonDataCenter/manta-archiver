@@ -7,6 +7,7 @@
  */
 package com.joyent.manta.archiver;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 
 import java.io.Serializable;
@@ -22,6 +23,7 @@ class FileDownload implements Serializable {
     private final Long lastModified;
     private final String remotePath;
     private final boolean isDirectory;
+    private Boolean isLink;
 
     /**
      * Creates a new instance.
@@ -34,11 +36,27 @@ class FileDownload implements Serializable {
     FileDownload(final Long size,
                  final Long lastModified,
                  final String remotePath,
-                 final boolean isDirectory) {
+                 final boolean isDirectory,
+                 final Boolean isLink) {
         this.size = size;
         this.lastModified = lastModified;
         this.remotePath = remotePath;
         this.isDirectory = isDirectory;
+        this.isLink = isLink;
+    }
+
+    /**
+     * Creates a new instance.
+     *
+     * @param size uncompressed size of file to download
+     * @param lastModified remote last modified time in epoch milliseconds
+     * @param remotePath remote Manta path
+     */
+    FileDownload(final Long size,
+                 final Long lastModified,
+                 final String remotePath,
+                 final boolean isDirectory) {
+        this(size, lastModified, remotePath, isDirectory, null);
     }
 
     long getSize() {
@@ -57,6 +75,15 @@ class FileDownload implements Serializable {
         return isDirectory;
     }
 
+    boolean isLink() {
+        return BooleanUtils.toBoolean(isLink);
+    }
+
+    FileDownload setLink(final boolean link) {
+        isLink = link;
+        return this;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) {
@@ -69,12 +96,13 @@ class FileDownload implements Serializable {
         return size == that.size
                 && lastModified == that.lastModified
                 && Objects.equals(remotePath, that.remotePath)
-                && Objects.equals(isDirectory, that.isDirectory);
+                && Objects.equals(isDirectory, that.isDirectory)
+                && Objects.equals(isLink, that.isLink);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(size, lastModified, remotePath, isDirectory);
+        return Objects.hash(size, lastModified, remotePath, isDirectory, isLink);
     }
 
     @Override
@@ -84,6 +112,7 @@ class FileDownload implements Serializable {
                 .append("lastModified", lastModified)
                 .append("remotePath", remotePath)
                 .append("isDirectory", isDirectory)
+                .append("isLink", isLink)
                 .toString();
     }
 }

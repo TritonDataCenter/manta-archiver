@@ -18,11 +18,12 @@ import com.joyent.manta.exception.MantaClientHttpResponseException;
 import com.joyent.manta.http.MantaHttpHeaders;
 import com.joyent.manta.util.MantaUtils;
 import com.twmacinta.util.FastMD5Digest;
+import com.twmacinta.util.MD5;
 import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.input.CountingInputStream;
+import org.apache.commons.io.output.NullOutputStream;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
@@ -34,9 +35,16 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Iterator;
@@ -62,6 +70,7 @@ class MantaTransferClient implements TransferClient {
     private static final String UNCOMPRESSED_SIZE_HEADER = "m-uncompressed-size";
     private static final String ORIGINAL_PATH_HEADER = "m-original-path";
     private static final String ORIGINAL_MD5_HEADER = "m-original-md5";
+    private static final String SYMBOLIC_LINK = "m-is-symbolic-link";
 
     /**
      * Function that converts a {@link MantaObject} to a {@link FileDownload}.
@@ -245,7 +254,7 @@ class MantaTransferClient implements TransferClient {
         final File file = upload.getTempPath().toFile();
         final String base64Checksum = Base64.encodeBase64String(upload.getChecksum());
 
-        if (!file.exists()) {
+        if (!Files.exists(upload.getTempPath(), LinkOption.NOFOLLOW_LINKS)) {
             String msg = String.format("Something went wrong. The file [%s] is "
                     + "no longer available for upload. Please make sure that "
                     + "there is no process deleting temp files. Upload details: %s%s",
@@ -299,6 +308,49 @@ class MantaTransferClient implements TransferClient {
             }
 
             String msg = "Unable to upload file";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("upload", upload);
+            tce.setContextValue("mantaPath", path);
+            throw tce;
+        }
+    }
+
+    @Override
+    public void put(final String path, final SymbolicLinkUpload upload) {
+        final String dir = FilenameUtils.getFullPath(path);
+        final String sourcePath = upload.getSourcePath().toString();
+
+        try {
+            if (!BooleanUtils.toBoolean(dirCache.getIfPresent(dir))) {
+                LOG.debug("Parent directory is already not in cache [{}] for file", dir, path);
+                clientRef.get().putDirectory(dir, true);
+            }
+
+            final byte[] resolvedLink = upload.linkPathAsUtf8();
+
+            final String httpLastModified = RFC_1123_DATE_TIME.format(
+                    upload.getLastModified().atZone(ZoneOffset.UTC));
+
+            final MantaHttpHeaders headers = new MantaHttpHeaders()
+                    .setLastModified(httpLastModified);
+
+            final MantaMetadata metadata = new MantaMetadata();
+            metadata.put(ORIGINAL_PATH_HEADER, sourcePath);
+            metadata.put(SYMBOLIC_LINK, Boolean.TRUE.toString());
+
+            MD5 md5 = new MD5();
+            md5.Update(resolvedLink);
+            final byte[] checksum = md5.Final();
+            final String mime64Checksum = Base64.encodeBase64String(checksum);
+
+            metadata.put(ORIGINAL_MD5_HEADER, mime64Checksum);
+
+            LOG.debug("Uploading link [{}] --> [{}]", upload.getSourcePath(), path);
+
+            MantaObjectResponse response = clientRef.get().put(
+                    path, resolvedLink, headers, metadata);
+        } catch (IOException e) {
+            String msg = "Unable to upload link";
             TransferClientException tce = new TransferClientException(msg, e);
             tce.setContextValue("upload", upload);
             tce.setContextValue("mantaPath", path);
@@ -390,16 +442,118 @@ class MantaTransferClient implements TransferClient {
     }
 
     @Override
-    public VerificationResult download(final String remotePath, final OutputStream out,
-                                       final Optional<File> file) {
+    public VerificationResult verifyLink(final String remotePath, final Path localLink) {
+        final String linkStoredRemotely;
+        try (MantaObjectInputStream in = clientRef.get().getAsInputStream(remotePath)) {
+            final boolean isLink = BooleanUtils.toBoolean(in.getHeaderAsString(SYMBOLIC_LINK));
+
+            if (!isLink) {
+                return VerificationResult.NOT_LINK;
+            }
+
+            linkStoredRemotely = IOUtils.toString(in, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            if (e instanceof MantaClientHttpResponseException) {
+                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
+
+                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    LOG.info("Couldn't find remote path {}");
+                    return VerificationResult.NOT_FOUND;
+                }
+            }
+
+            String msg = "Unable to verify link";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", remotePath);
+            throw tce;
+        }
+
+        return verifyLocalLinkToRemoteStoredLink(linkStoredRemotely, localLink);
+    }
+
+    private VerificationResult verifyLocalLinkToRemoteStoredLink(
+            final String linkStoredRemotely, final Path localLink) {
+
+        final Path localResolvedPath;
+        try {
+            localResolvedPath = Files.readSymbolicLink(localLink);
+        } catch (IOException e) {
+            String msg = String.format("An unknown issue occurred when reading "
+                    + "a symlink at: %s", localLink);
+            throw new UncheckedIOException(msg, e);
+        }
+
+        final Path remoteResolvedPath = Paths.get(linkStoredRemotely);
+
+        if (localResolvedPath.equals(remoteResolvedPath)) {
+            return VerificationResult.LINK_OK;
+        } else {
+            return VerificationResult.LINK_MISMATCH;
+        }
+    }
+
+    @Override
+    public VerificationResult download(final String remotePath, final Optional<Path> path) {
+        try (MantaObjectInputStream in = clientRef.get().getAsInputStream(remotePath)) {
+            if (BooleanUtils.toBoolean(in.getHeaderAsString(SYMBOLIC_LINK)) && path.isPresent()) {
+                return downloadLink(in, path.get());
+            } else {
+                return downloadFile(remotePath, in, path);
+            }
+        } catch (RuntimeException | IOException e) {
+            if (e instanceof MantaClientHttpResponseException) {
+                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
+
+                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    LOG.info("Couldn't find {}", remotePath);
+                    return VerificationResult.NOT_FOUND;
+                }
+            }
+
+            String msg = "Unable to download remote file";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", remotePath);
+            throw tce;
+        }
+    }
+
+    private VerificationResult downloadLink(final MantaObjectInputStream in,
+                                            final Path path)
+            throws IOException {
+
+        final String linkStoredRemotely = IOUtils.toString(in, StandardCharsets.UTF_8);
+        final Path target = Paths.get(linkStoredRemotely);
+
+        try {
+            Files.createSymbolicLink(path, target);
+        } catch (FileAlreadyExistsException e) {
+            VerificationResult result = verifyLocalLinkToRemoteStoredLink(
+                    linkStoredRemotely, path);
+
+            // Links do not match in their targets, so we overwrite
+            if (VerificationResult.LINK_MISMATCH.equals(result)) {
+                Files.deleteIfExists(path);
+                Files.createSymbolicLink(path, target);
+            } else {
+                return result;
+            }
+        }
+
+        return VerificationResult.LINK_OK;
+    }
+
+    private VerificationResult downloadFile(final String remotePath,
+                                            final MantaObjectInputStream in,
+                                            final Optional<Path> path)
+            throws IOException {
+
         final byte[] expectedChecksum;
         final byte[] actualChecksum;
         final long expectedSize;
         final long lastModified;
 
-        try (MantaObjectInputStream in = clientRef.get().getAsInputStream(remotePath);
-             XZCompressorInputStream xzIn = new XZCompressorInputStream(in);
-             CountingInputStream cIn = new CountingInputStream(xzIn);
+        try (InputStream decompressStream = ObjectCompressor.INSTANCE.decompress(remotePath, in);
+             CountingInputStream cIn = new CountingInputStream(decompressStream);
              DigestInputStream dIn = new DigestInputStream(cIn, new FastMD5Digest())) {
 
             final String md5Base64 = in.getHeaderAsString(ORIGINAL_MD5_HEADER);
@@ -420,37 +574,40 @@ class MantaTransferClient implements TransferClient {
 
             expectedSize = Long.parseLong(originalSize);
 
-            LOG.debug("Downloading [{}]", remotePath);
-            IOUtils.copyLarge(dIn, out, 0, expectedSize);
-
-            final Digest digest = dIn.getDigest();
-            actualChecksum = new byte[digest.getDigestSize()];
-            digest.doFinal(actualChecksum, 0);
-
-            if (dIn.read() != -1) {
-                LOG.info("{} was larger than the expected size of {}");
-                return VerificationResult.WRONG_SIZE;
-            }
-
             if (in.getLastModifiedTime() != null) {
                 lastModified = in.getLastModifiedTime().getTime();
             } else {
                 lastModified = Instant.now().toEpochMilli();
             }
-        } catch (RuntimeException | IOException e) {
-            if (e instanceof MantaClientHttpResponseException) {
-                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
 
-                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
-                    LOG.info("Couldn't find {}", remotePath);
-                    return VerificationResult.NOT_FOUND;
-                }
+            final OutputStream out;
+
+            if (path.isPresent()) {
+                out = Files.newOutputStream(path.get());
+            } else {
+                out = new NullOutputStream();
             }
 
-            String msg = "Unable to download remote file";
-            TransferClientException tce = new TransferClientException(msg, e);
-            tce.setContextValue("mantaPath", remotePath);
-            throw tce;
+            try {
+                LOG.debug("Downloading [{}]", remotePath);
+                IOUtils.copyLarge(dIn, out, 0, expectedSize);
+
+                final Digest digest = dIn.getDigest();
+                actualChecksum = new byte[digest.getDigestSize()];
+                digest.doFinal(actualChecksum, 0);
+
+                if (dIn.read() != -1) {
+                    LOG.info("{} was larger than the expected size of {}");
+                    return VerificationResult.WRONG_SIZE;
+                }
+            } catch (IOException e) {
+                String msg = "Unable to write file";
+                TransferClientException tce = new TransferClientException(msg, e);
+                tce.setContextValue("localPath", path);
+                throw tce;
+            } finally {
+                IOUtils.closeQuietly(out);
+            }
         }
 
         if (!Arrays.areEqual(expectedChecksum, actualChecksum)) {
@@ -458,20 +615,35 @@ class MantaTransferClient implements TransferClient {
             return VerificationResult.CHECKSUM_MISMATCH;
         }
 
-        if (file.isPresent()) {
-            if (!file.get().setLastModified(lastModified)) {
-                LOG.warn("Unable to write last modified date for file: {}", file);
+        if (path.isPresent()) {
+            try {
+                Files.setLastModifiedTime(path.get(), FileTime.fromMillis(lastModified));
+            } catch (IOException e) {
+                String msg = String.format("Unable to write last modified date for file: %s",
+                        path.get());
+                LOG.warn(msg, e);
             }
 
-            final long fileSize = file.get().length();
+            final long fileSize = Files.size(path.get());
             if (fileSize != expectedSize) {
                 LOG.info("Incorrect number of bytes written to file [{}]. Actual: {} Expected: {}",
-                        file, fileSize, expectedSize);
+                        path, fileSize, expectedSize);
                 return VerificationResult.WRONG_SIZE;
             }
         }
 
         return VerificationResult.OK;
+    }
+
+    @Override
+    public String get(final String remotePath) {
+        try {
+            return clientRef.get().getAsString(remotePath,
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            String msg = "Couldn't find remote object: " + remotePath;
+            throw new UncheckedIOException(msg, e);
+        }
     }
 
     private MantaObjectResponse checkForRemoteFile(final String path) throws IOException {
@@ -521,6 +693,8 @@ class MantaTransferClient implements TransferClient {
 
         if (isDirectory && !filename.isEmpty() && !filename.endsWith(MantaClient.SEPARATOR)) {
             builder.append(MantaClient.SEPARATOR);
+        } else if (Files.isSymbolicLink(sourcePath)) {
+            // Don't append any extensions for symlinks
         } else if (!isDirectory) {
             builder.append(".").append(ObjectCompressor.COMPRESSION_TYPE);
         }

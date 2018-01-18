@@ -44,7 +44,7 @@ class ObjectUploadQueueLoader {
 
     private static final int MIN_FILE_SIZE_TO_BLOCK_ON = 10_000;
 
-    private static final ObjectCompressor COMPRESSOR = new ObjectCompressor();
+    private static final ObjectCompressor COMPRESSOR = ObjectCompressor.INSTANCE;
 
     private final ForkJoinPool executor;
     private final TransferQueue<ObjectUpload> queue;
@@ -217,7 +217,10 @@ class ObjectUploadQueueLoader {
             final File file = path.toFile();
 
             // Creates directory in temporary path
-            if (file.isDirectory()) {
+            if (Files.isSymbolicLink(path)) {
+                SymbolicLinkUpload linkUpload = new SymbolicLinkUpload(path);
+                queue.put(linkUpload);
+            } else if (file.isDirectory()) {
                 appendPaths(TEMP_PATH, path).toFile().mkdirs();
                 queue.put(new DirectoryUpload(path));
             } else {
