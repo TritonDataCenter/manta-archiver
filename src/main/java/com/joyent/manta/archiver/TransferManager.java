@@ -412,8 +412,8 @@ public class TransferManager implements AutoCloseable {
             Class<?> signalHandlerClass = Class.forName("sun.misc.SignalHandler");
             Constructor<?> signalClassConstructor = signalClass.getConstructor(String.class);
             Method handle = signalClass.getMethod("handle", signalClass, signalHandlerClass);
-            Object signalInstance = signalClassConstructor.newInstance("HUP");
-            handle.invoke(null, signalInstance, new SighupHandler(function));
+            Object signalInstance = signalClassConstructor.newInstance("USR2");
+            handle.invoke(null, signalInstance, new Sigusr2Handler(function));
         } catch (ReflectiveOperationException e) {
             final String msg = "Unable to register signal handler via reflection";
                 LOG.warn(msg, e);

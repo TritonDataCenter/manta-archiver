@@ -18,8 +18,8 @@ import java.util.function.Function;
 /**
  * Flexible handler class for acting on SIGHUP signals.
  */
-public class Siguser1Handler implements SignalHandler {
-    private static final Logger LOG = LoggerFactory.getLogger(Siguser1Handler.class);
+public class Sigusr2Handler implements SignalHandler {
+    private static final Logger LOG = LoggerFactory.getLogger(Sigusr2Handler.class);
 
     private final Function<Void, Optional<RuntimeException>> function;
 
@@ -28,13 +28,13 @@ public class Siguser1Handler implements SignalHandler {
      *
      * @param function function to execution upon SIGHUP
      */
-    public Siguser1Handler(final Function<Void, Optional<RuntimeException>> function) {
+    public Sigusr2Handler(final Function<Void, Optional<RuntimeException>> function) {
         this.function = function;
     }
 
     @Override
     public void handle(final Signal signal) {
-        LOG.debug("SIGUSR1 received");
-        function.apply(null).ifPresent(e -> LOG.error("Error processing SIGHUP", e));
+        LOG.debug("Signal received");
+        function.apply(null).ifPresent(e -> LOG.error("Error processing signal", e));
     }
 }
