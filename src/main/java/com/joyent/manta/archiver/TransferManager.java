@@ -272,7 +272,7 @@ public class TransferManager implements AutoCloseable {
         }
 
         final AtomicBoolean verificationSuccess = new AtomicBoolean(true);
-        final int statusMsgSize = 19;
+        final int statusMsgSize = 27;
 
         final String format = "[%s] %s <-> %s" + System.lineSeparator();
 
@@ -313,6 +313,12 @@ public class TransferManager implements AutoCloseable {
                             localPath, mantaPath);
                     if (Files.isSymbolicLink(localPath)) {
                         SymbolicLinkUpload upload = new SymbolicLinkUpload(localPath);
+
+                        if (result.isNotLink()) {
+                            boolean recursive = VerificationResult.NOT_LINK_ACTUALLY_DIR.equals(result);
+                            client.delete(mantaPath, recursive);
+                        }
+
                         client.put(mantaPath, upload);
                     } else if (Files.isDirectory(localPath, LinkOption.NOFOLLOW_LINKS)) {
                         client.mkdirp(mantaPath, new DirectoryUpload(localPath));

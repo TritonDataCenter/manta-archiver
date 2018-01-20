@@ -14,7 +14,9 @@ import com.joyent.manta.client.MantaMetadata;
 import com.joyent.manta.client.MantaObject;
 import com.joyent.manta.client.MantaObjectInputStream;
 import com.joyent.manta.client.MantaObjectResponse;
+import com.joyent.manta.domain.ObjectType;
 import com.joyent.manta.exception.MantaClientHttpResponseException;
+import com.joyent.manta.exception.MantaUnexpectedObjectTypeException;
 import com.joyent.manta.http.MantaHttpHeaders;
 import com.joyent.manta.util.MantaUtils;
 import com.twmacinta.util.FastMD5Digest;
@@ -447,17 +449,52 @@ class MantaTransferClient implements TransferClient {
         try (MantaObjectInputStream in = clientRef.get().getAsInputStream(remotePath)) {
             final boolean isLink = BooleanUtils.toBoolean(in.getHeaderAsString(SYMBOLIC_LINK));
 
-            if (!isLink) {
-                return VerificationResult.NOT_LINK;
+            if (!isLink && in.isDirectory()) {
+                final boolean emptyDir = "0".equals(in.getHeaderAsString(MantaHttpHeaders.RESULT_SET_SIZE));
+
+                if (emptyDir) {
+                    return VerificationResult.NOT_LINK_ACTUALLY_EMPTY_DIR;
+                } else {
+                    return VerificationResult.NOT_LINK_ACTUALLY_DIR;
+                }
+
+            } else if (!isLink) {
+                return VerificationResult.NOT_LINK_ACTUALLY_FILE;
             }
 
             linkStoredRemotely = IOUtils.toString(in, StandardCharsets.UTF_8);
+
+        /* When the server barfs because we attempted to download a directory
+         * instead of a file, we catch the condition and analyze it in order to
+         * return back useful information about why the link verification failed.
+         * Based on the exception information provided, we should be able to know
+         * if the remote path is an empty directory or not. With that information
+         * our app can choose to recursively delete or not without having to
+         * search a remote location. */
+        } catch (MantaUnexpectedObjectTypeException e) {
+            if (e.getActual().equals(ObjectType.DIRECTORY)) {
+                MantaHttpHeaders headers = e.getResponseHeaders();
+
+                if (headers == null || headers.getResultSetSize() == null) {
+                    return VerificationResult.NOT_LINK_ACTUALLY_DIR;
+                }
+
+                if (headers.getResultSetSize() == 0) {
+                    return VerificationResult.NOT_LINK_ACTUALLY_EMPTY_DIR;
+                }
+
+                return VerificationResult.NOT_LINK_ACTUALLY_DIR;
+            }
+
+            String msg = String.format("A completely unexpected type was "
+                    + "returned as the actual data type: %s", e.getActual());
+            throw new IllegalStateException(msg, e);
         } catch (IOException e) {
             if (e instanceof MantaClientHttpResponseException) {
                 MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
 
                 if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
-                    LOG.info("Couldn't find remote path {}");
+                    LOG.info("Couldn't find remote link path {}");
                     return VerificationResult.NOT_FOUND;
                 }
             }
@@ -655,6 +692,31 @@ class MantaTransferClient implements TransferClient {
             }
 
             throw e;
+        }
+    }
+
+    @Override
+    public void delete(final String remotePath, final boolean recursive) {
+        try {
+            if (recursive) {
+                clientRef.get().deleteRecursive(remotePath);
+            } else {
+                clientRef.get().delete(remotePath);
+            }
+        } catch (IOException e) {
+            if (e instanceof MantaClientHttpResponseException) {
+                MantaClientHttpResponseException mchre = (MantaClientHttpResponseException)e;
+
+                if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
+                    LOG.info("Couldn't delete non-existent path {}", remotePath);
+                    return;
+                }
+            }
+
+            String msg = "Unable to download remote file";
+            TransferClientException tce = new TransferClientException(msg, e);
+            tce.setContextValue("mantaPath", remotePath);
+            throw tce;
         }
     }
 

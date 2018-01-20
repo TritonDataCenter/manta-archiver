@@ -43,6 +43,11 @@ class EchoTransferClient implements TransferClient {
     }
 
     @Override
+    public void delete(final String path, final boolean recursive) {
+
+    }
+
+    @Override
     public int getMaximumConcurrentConnections() {
         return 12;
     }

@@ -54,6 +54,14 @@ public interface TransferClient extends AutoCloseable {
     void put(String path, SymbolicLinkUpload upload);
 
     /**
+     * Deletes a path.
+     *
+     * @param path path to delete
+     * @param recursive if true recursively delete all sub-objects
+     */
+    void delete(String path, boolean recursive);
+
+    /**
      * Verifies that the specified directory exists on the remote file system.
      * @param remotePath path to remote directory
      * @return enum representing verification status

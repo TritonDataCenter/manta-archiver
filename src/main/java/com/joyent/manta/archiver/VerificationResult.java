@@ -36,9 +36,17 @@ public enum VerificationResult {
      */
     NOT_FILE,
     /**
-     * Local object is a link but remote object is not a link.
+     * Local object is a link but remote object is file and not a link.
      */
-    NOT_LINK,
+    NOT_LINK_ACTUALLY_FILE,
+    /**
+     * Local object is a link but remote object is empty directory and not a link.
+     */
+    NOT_LINK_ACTUALLY_EMPTY_DIR,
+    /**
+     * Local object is a link but remote object is a directory and not a link.
+     */
+    NOT_LINK_ACTUALLY_DIR,
     /**
      * Local object size does not match remote object size.
      */
@@ -62,5 +70,15 @@ public enum VerificationResult {
      */
     public boolean isOk() {
         return this.equals(OK) || this.equals(LINK_OK);
+    }
+
+    /**
+     * @return true if verification indicates that we failed because we didn't
+     *         have a link present remotely
+     */
+    public boolean isNotLink() {
+        return this.equals(NOT_LINK_ACTUALLY_FILE)
+                || this.equals(NOT_LINK_ACTUALLY_EMPTY_DIR)
+                || this.equals(NOT_LINK_ACTUALLY_DIR);
     }
 }
