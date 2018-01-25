@@ -23,6 +23,7 @@ Encryption is configured in the [same way as the Java Manta SDK](https://github.
 
 #### connect-test
 Options: None
+
 This command validates that the utility can connect properly to Manta with the
 current configuration. Additionally, it outputs the final configuration.
 For example:
@@ -40,8 +41,11 @@ $ java -jar target/manta-archiver-1.0.0-SNAPSHOT.jar connect-test
 
 #### generate-key
 Options: `<cipher> <bits> <path>`
+
 cipher: `AES` (only supported value)
+
 bits: `128`, `192`, `256` (only supported values)
+
 path: path on local filesystem to save key
 
 This command generates an a new encryption key using the specified parameters
@@ -49,7 +53,9 @@ and saves it to a local path. This is your secret key and it must be proctected.
 
 #### validate-key
 Options: `<cipher> <path>`
+
 cipher: `AES` (only supported value)
+
 path: path on local filesystem to load key from
 
 This command validates an existing encryption key to determine if it is a valid
@@ -57,7 +63,9 @@ key.
 
 #### upload
 Options: `<local-directory> <manta-directory>`
+
 local-directory: the directory path on the local file system to send to Manta
+
 manta-directory: the remote directory path on Manta to upload data to
 
 This command uploads all of the files and directories under the specified 
@@ -65,7 +73,9 @@ directory to Manta to Manta.
 
 #### download
 Options: `<local-directory> <manta-directory>`
+
 local-directory: the directory path on the local file system to copy files to from Manta
+
 manta-directory: the remote directory path on Manta to download data from
 
 This command downloads all of the directories and files from Manta the specified
@@ -73,8 +83,11 @@ remote Manta path.
 
 #### verify-local
 Options: `[--fix] <local-directory> <manta-directory>`
+
 --fix: optional flag that indicates we upload any missing or different files to Manta
+
 local-directory: the directory path on the local file system to copy files to from Manta
+
 manta-directory: the remote directory path on Manta to download data from
 
 This command verifies that the contents of a local directory (files and 
@@ -85,6 +98,7 @@ file system with the files stored on Manta.
 
 #### verify-remote
 Options: `<manta-directory>`
+
 This command verifies that the contents of a remote directory match the checksum
 stored in Manta's metadata. It does this by downloading each file and performing
 a checksum on the contents and comparing it to the checksum in the metadata. 
