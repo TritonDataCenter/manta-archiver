@@ -69,10 +69,8 @@ public class ManataClientSupplierTest {
     public static final String MANTA_ENCRYPTION_AUTH_MODE = "manta.encryption_auth_mode";
     public static final String MANTA_ENCRYPTION_KEY_PATH = "manta.encryption_key_path";
     public static final String MANTA_ENCRYPTION_KEY_BYTES_64 = "manta.encryption_key_bytes_base";
-
-    private final String manta_user = System.getenv(MANTA_USER);
     private static final String base_dir = String.format("/%s", System.getenv(MANTA_USER));
-    private static final String stor_dir = String.format("/%s/stor", System.getenv(MANTA_USER));
+
 
     @BeforeMethod
     private void setParameters() {
@@ -82,48 +80,42 @@ public class ManataClientSupplierTest {
         System.setProperty(MANTA_KEY_PATH_PROPERTY, System.getenv(MANTA_KEY_PATH));
     }
 
-    // @Test(expectedExceptions = {
-    // KeyLoadException.class }, expectedExceptionsMessageRegExp = ".*testKey.ida.*", description = "This will create a
-    // empty temp file and set the property to point to it")
-    // public void emptyKeyFile() throws IOException {
-    // String keyfile = "testKey.ida";
-    // keyfile = String.format("%s%s", System.getProperty("java.io.tmpdir"), keyfile);
-    // File keyFile = new File(keyfile);
-    // keyFile.createNewFile();
-    //
-    // System.setProperty(MANTA_KEY_PATH_PROPERTY, keyFile.getAbsolutePath());
-    // MantaClient client = MANTA_CLIENT_SUPPLIER.get();
-    // }
+    @Test(expectedExceptions = {
+            KeyLoadException.class }, expectedExceptionsMessageRegExp = ".*testKey.ida.*", description = "This will create a empty temp file and set the property to point to it")
+    public void emptyKeyFile() throws IOException {
+        String keyfile = "testKey.ida";
+        keyfile = String.format("%s%s", System.getProperty("java.io.tmpdir"), keyfile);
+        File keyFile = new File(keyfile);
+        keyFile.createNewFile();
+        System.setProperty(MANTA_KEY_PATH_PROPERTY, keyFile.getAbsolutePath());
+        MantaClient client = MANTA_CLIENT_SUPPLIER.get();
+        Assert.fail("Failed we should have gotten an exception by now.");
+    }
 
     /**
      * This will have an invalid key file, but not empty.
      *
      * @throws IOException
      */
-    // @Test(expectedExceptions = {
-    // KeyLoadException.class }, expectedExceptionsMessageRegExp = ".*invalidKey.ida.*", description = "This will create
-    // a non-empty invalid key")
-    // public void invalidKey() throws IOException {
-    // String filename = "invalidKey.ida";
-    // filename = String.format("%s%s", System.getProperty("java.io.tmpdir"), filename);
-    // File keyFile = new File(filename);
-    // keyFile.createNewFile();
-    // try (BufferedWriter bw = new BufferedWriter(new FileWriter(filename))) {
-    // byte[] array = new byte[128];
-    // new Random().nextBytes(array);
-    // String generatedString = new String(array, Charset.forName("UTF-8"));
-    // bw.write(generatedString);
-    // } catch (Exception e) {
-    // Assert.fail("Failed on unexpected exception " + e.getMessage());
-    // }
-    // System.setProperty(MANTA_KEY_PATH_PROPERTY, keyFile.getAbsolutePath());
-    // MantaClient client = MANTA_CLIENT_SUPPLIER.get();
-    // Stream<MantaObject> mor = client.listObjects("/" + manta_user + "/stor");
-    // Iterator<MantaObject> it = mor.iterator();
-    // while (it.hasNext()) {
-    // Log.info(it.next());
-    // }
-    // }
+    @Test(expectedExceptions = {
+            KeyLoadException.class }, expectedExceptionsMessageRegExp = ".*invalidKey.ida.*", description = "This will create a non-empty invalid key")
+    public void invalidKey() throws IOException {
+        String filename = "invalidKey.ida";
+        filename = String.format("%s%s", System.getProperty("java.io.tmpdir"), filename);
+        File keyFile = new File(filename);
+        keyFile.createNewFile();
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(filename))) {
+            byte[] array = new byte[128];
+            new Random().nextBytes(array);
+            String generatedString = new String(array, Charset.forName("UTF-8"));
+            bw.write(generatedString);
+        } catch (Exception e) {
+            Assert.fail("Failed on unexpected exception " + e.getMessage());
+        }
+        System.setProperty(MANTA_KEY_PATH_PROPERTY, keyFile.getAbsolutePath());
+        MantaClient client = MANTA_CLIENT_SUPPLIER.get();
+        Assert.fail("Failed we should have gotten an exception by now.");
+    }
 
     /**
      * This will use a key file that has a valid key but not one currently owned by the user.
