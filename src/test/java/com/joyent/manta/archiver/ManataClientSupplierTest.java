@@ -6,14 +6,11 @@
  */
 package com.joyent.manta.archiver;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +29,6 @@ public class ManataClientSupplierTest {
 
     private static final MantaClientSupplier MANTA_CLIENT_SUPPLIER = new MantaClientSupplier();
     private File keyFile;
-    public static final String MANTA_URL_PROPERTY = "manta.url";
     private String keyId;
 
     public ManataClientSupplierTest() throws IOException {
@@ -46,7 +42,7 @@ public class ManataClientSupplierTest {
     @BeforeMethod
     private void setParameters() {
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_URL_KEY, "");
-        System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_USER_KEY, "JunkUser");
+        System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_USER_KEY, "TestUser");
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_KEY_ID_KEY, keyId);
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_KEY_PATH_KEY, keyFile.getAbsolutePath());
     }
@@ -117,15 +113,8 @@ public class ManataClientSupplierTest {
     }
 
     @Test
-    public void invalidPassword() throws IOException {
-        System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_USER_KEY, "invalid");
-        MantaClient client = MANTA_CLIENT_SUPPLIER.get();
-        Assert.assertNotNull(client);
-    }
-
-    @Test
-    public void settingNoAuth() throws IOException {
-        System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_NO_AUTH_KEY, "true");
+    public void invalidNoAuth() throws IOException {
+        System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_NO_AUTH_KEY, "invalid");
         MantaClient client = MANTA_CLIENT_SUPPLIER.get();
         Assert.assertNotNull(client);
     }
