@@ -6,11 +6,17 @@
  */
 package com.joyent.manta.archiver;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Random;
 
 import org.testng.Assert;
@@ -25,64 +31,28 @@ import com.joyent.manta.exception.ConfigurationException;
 public class ManataClientSupplierTest {
 
     private static final MantaClientSupplier MANTA_CLIENT_SUPPLIER = new MantaClientSupplier();
-
-    public static final String MANTA_URL = "MANTA_URL";
-    public static final String MANTA_USER = "MANTA_USER";
-    public static final String MANTA_KEY_ID = "MANTA_KEY_ID";
-    public static final String MANTA_KEY_PATH = "MANTA_KEY_PATH";
-
     private File keyFile;
-
     public static final String MANTA_URL_PROPERTY = "manta.url";
+    private String keyId;
 
-    public ManataClientSupplierTest() { 
-        String keyFileName = "ValidButNotRegistered.ida";
-               keyFileName = String.format("%s%s", System.getProperty("java.io.tmpdir"), keyFileName);
-                keyFile = new File(keyFileName);
-                try (BufferedWriter bw = new BufferedWriter(new FileWriter(keyFileName))) {
-                    keyFile.createNewFile();
-                    String validKey = "-----BEGIN RSA PRIVATE KEY-----\n"
-                            + "MIIEpAIBAAKCAQEAqPX5IXovNwXe5ouz0TCekkdDNXS7E5dIZLmjRK4TxQAbulPj\n"
-                            + "Y0/FVclIDpjwVFw1mCdCPVNk47/++kUDAl8Gl0EUrGqeDe/Q5eK234oavz3oylWd\n"
-                            + "elmYqApH8fplMAVfeur8e+5pQHB2FLCcsgEK+3zRtfI7vgXY6xE3WUGlCmNjN/wH\n"
-                            + "jccn8G11RMibIpkFuE/g6OBm0GaC8Ikjn5lpVQcLTqRxHyHHo/0jE9rUy8IvVonb\n"
-                            + "ZaSlx7clwm6szN6aE5/FCEwaGsSxdlkzgPDc+0pO+GTdwhGs7Rl2ExcLhSWnPjUA\n"
-                            + "ZuZLcmFa4adD+NQHbTw2HlLqaHRJV4g0BsY2oQIDAQABAoIBAQCnzaLf3LmHrAz0\n"
-                            + "a0rrN55FKQFW1df2XQlJABVm4HxB6xmetDHhMBiMWpt14+7L2chglJz0yx4oE0bo\n"
-                            + "yCF0+WtSTRB7LGhM7yBJMCDvYfmudY39ZYpBOTqjqZJKgKR+TNfG/BpF+0IM/aRI\n"
-                            + "aB83qlF98zlTuoAa+TO2QiL2QnvnE7CyTn1uhhzRCT2YTuwUECqSTNHHHQrgGyCE\n"
-                            + "GD7YlzckUt1GD3cOKKUt9BE6/i2TjMSkC6N+Az1T8uzybENWupAqizcCws2jFtXS\n"
-                            + "iJmWzB3BtLHEVZN1D56wQTY2Q2FTT/iFbLDLt8Y+YW6jC1F03iHhyqaseZeUSKuS\n"
-                            + "/xwucDABAoGBANlvN74e11cZLLhmn5tbzZFUWlUcyO0x5uF84aIr9uGnZdlhj5Xt\n"
-                            + "84HzWSavbFAiRpuHwY6VudAq7cRAx+P5pCWSH3soS0kThd15p3LoEibPi3ad8gq6\n"
-                            + "vAhNEPkEqkBoZVRj4VgpweV7gdIJbIZ8JbZPU+Dq9PetseRZqqYMoyvJAoGBAMbt\n"
-                            + "xdxzM7xcQ3L7T37CBt251G3Dmcuw+fbp/dWWCKqvWjQX8yMRVtlcd28+XHyJiVOt\n"
-                            + "vjOaJgHS9/IZVwd95zv5dtfKYSk7tivtOD/YJ8FxprqtfMyxnIz2wFhWsawPuDjX\n"
-                            + "aVf4Q0oP46MBiRIQgWvMraYJtMafssnSpz/Dt3AZAoGBAJ6vGVpqPbQ2Djohwzfp\n"
-                            + "vtPiYO6ezFC3S42iyzTEqy+yMJV+KwE7oKxlQdoGyqCM80TMxcjeorY2rkG9GWTa\n"
-                            + "qx40Tz9df9w8IEUrZLZqgdzLOTf/O0bzUwkn3UwvSGUrC1CUeEAUcYqeIXd9IzPe\n"
-                            + "5NLxgAC02MTtgddqTS1UKb1pAoGANgYAw/utQywzTRie4CfFQZXj8OM78yte1wV4\n"
-                            + "3/Zc6C2y647NguqEkYchEF75MwEPAGCg1Na6F6i5mU/0aJ5ym8EF21ikxlPnB0rn\n"
-                            + "Cb+kHE7HHs9aoyRhBY9FcTgqDDZAq38kprVPYN+rzGrwVK2S2Dm/tuXP6FkabuD8\n"
-                            + "dr6qJJECgYBKc09htDe/OBPqyVtEuUv0HTA5KRNpqeheWCKTDAFtjpciYa1qLyjs\n"
-                            + "JET3gPfjWkcuDOCs6zcaj/anlr/PxdSxYw4Zu21YKZGY70ceBEJgtX5PcrgmpH7R\n"
-                            + "99+DOAhlNqwK5X+4Foo3tErRveaTczgz38G17IfoKJ7rKYHQt1o+bQ==\n" + "-----END RSA PRIVATE KEY-----";
-                    bw.write(validKey);
-                } catch (Exception e) {
-                   Assert.fail("Failed while writing key file.");
-                }
+    public ManataClientSupplierTest() throws IOException {
+        ClassLoader classLoader = getClass().getClassLoader();
+        keyFile = new File(classLoader.getResource("keys/rsa/ValidKey.ida").getFile());
+        File keyIdFile = new File(classLoader.getResource("keys/rsa/ValidKey_id.txt").getFile());
+        Path path = FileSystems.getDefault().getPath(keyIdFile.getParentFile().getPath(), "ValidKey_id.txt");
+        keyId = new String(Files.readAllBytes(path)).trim();
     }
 
     @BeforeMethod
     private void setParameters() {
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_URL_KEY, "");
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_USER_KEY, "JunkUser");
-        System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_KEY_ID_KEY, "MD5:73:a4:21:e9:1c:95:bf:31:5d:14:0b:83:3c:a8:9b:20");
+        System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_KEY_ID_KEY, keyId);
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_KEY_PATH_KEY, keyFile.getAbsolutePath());
     }
 
     @Test
-    public void testSomething() {
+    public void basicTest() {
         MantaClient client = MANTA_CLIENT_SUPPLIER.get();
         Assert.assertNotNull(client);
     }
