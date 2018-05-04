@@ -14,6 +14,10 @@ See the following wiki articles for setup instructions:
 - [Quick, with encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-with-encryption)
 - [Advanced](https://github.com/joyent/manta-archiver/wiki/Advanced-setup)
 
+### Encryption
+Using stronger encryption modes (192 and 256-bit) with the Oracle and Azul JVMs requires installation of the
+[Java Cryptography Extensions](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html) for Oracle JVMs and the [Zulu Cryptography Extension Kit](https://www.azul.com/products/zulu-and-zulu-enterprise/zulu-cryptography-extension-kit/) for Azul JVMs. This does not apply as of Java 8 update 161, which includes JCE by default for both [Oracle](http://www.oracle.com/technetwork/java/javase/8u161-relnotes-4021379.html#JDK-8170157) and [Azul](https://support.azul.com/hc/en-us/articles/115001122623-Java-Cryptography-Extension-JCE-for-Zing). OpenJDK distributions do not need any modifications to support stronger encryption modes.
+
 ### Commands
 
 #### Universal options relevant to all commands
@@ -100,6 +104,3 @@ This command verifies that the contents of a remote directory match the checksum
 stored in Manta's metadata. It does this by downloading each file and performing
 a checksum on the contents and comparing it to the checksum in the metadata.
 
-### Encryption
-Using stronger encryption modes (192 and 256-bit) with the Oracle and Azul JVMs requires installation of the
-[Java Cryptography Extensions](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html) for Oracle JVMs and the [Zulu Cryptography Extension Kit](https://www.azul.com/products/zulu-and-zulu-enterprise/zulu-cryptography-extension-kit/) for Azul JVMs. This does not apply as of Java 8 update 161, which includes JCE by default for both [Oracle](http://www.oracle.com/technetwork/java/javase/8u161-relnotes-4021379.html#JDK-8170157) and [Azul](https://support.azul.com/hc/en-us/articles/115001122623-Java-Cryptography-Extension-JCE-for-Zing). OpenJDK distributions do not need any modifications to support stronger encryption modes.
