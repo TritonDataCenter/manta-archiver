@@ -6,31 +6,13 @@ in a compressed state with optional encryption provided by the Manta Java SDK.
 
 ## Usage
 
-### Quick
+Manta Archiver is configured in the same fashion as [java-manta](https://github.com/joyent/java-manta) but provides a way
+to interactively generate a configuration file so you don't need to learn about java-manta in order to use this project.
+See the following wiki articles for setup instructions:
 
-1. Download the [lastest release JAR](https://github.com/joyent/manta-archiver/releases.
-2. Generate a configuration file, supplying a key strength if encryption is desired. This will generate a file named `env.sh` will be generated in the current directory.
-    ```bash
-    $ java -jar manta-archiver-1.0.jar generate-env [128, 192, 256]
-    ```
-
-3. Source `env.sh`. This uses the generated file to configure manta-archiver.
-    ```bash
-    $ source env.sh
-    ```
-4. You should now be able to run the `connect-test` subcommand:
-    ```bash
-    $ java -jar manta-archiver-1.0.jar connect-test
-    ...
-    Request was successful
-    ```
-5. Finally, archive a folder with the `upload` subcommand:
-    ```bash
-    ```
-
-### Advanced
-
-
+- [Quick, no encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-no-encryption)
+- [Quick, with encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-with-encryption)
+- [Advanced](https://github.com/joyent/manta-archiver/wiki/Advanced-setup)
 
 ### Commands
 
@@ -86,7 +68,7 @@ key.
 > **local-directory**: the directory path on the local file system to send to Manta
 > **manta-directory**: the remote directory path on Manta to upload data to
 
-This command uploads all of the files and directories under the specified 
+This command uploads all of the files and directories under the specified
 directory to Manta to Manta.
 
 #### download
@@ -105,14 +87,14 @@ remote Manta path.
 > **local-directory**: the directory path on the local file system to copy files to from Manta
 > **manta-directory**: the remote directory path on Manta to download data from
 
-This command verifies that the contents of a local directory (files and 
+This command verifies that the contents of a local directory (files and
 directories) match the contents of a remote Manta path. If the `--fix` flag is
 present, then this command will upload any missing files/directories or files
 that do not match the remote file. Additionally, this command compares the local
 file system with the files stored on Manta.
 
 #### verify-remote
-Options: `<manta-directory>`
+> Arguments: `<manta-directory>`
 
 This command verifies that the contents of a remote directory match the checksum
 stored in Manta's metadata. It does this by downloading each file and performing
