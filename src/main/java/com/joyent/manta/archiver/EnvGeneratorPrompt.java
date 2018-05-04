@@ -16,8 +16,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Scanner;
 import java.util.function.Predicate;
+
+import static com.joyent.manta.config.EnvVarConfigContext.MANTA_ACCOUNT_ENV_KEY;
+import static com.joyent.manta.config.EnvVarConfigContext.MANTA_ENCRYPTION_KEY_ID_ENV_KEY;
+import static com.joyent.manta.config.EnvVarConfigContext.MANTA_ENCRYPTION_PRIVATE_KEY_PATH_ENV_KEY;
+import static com.joyent.manta.config.EnvVarConfigContext.MANTA_KEY_ID_ENV_KEY;
+import static com.joyent.manta.config.EnvVarConfigContext.MANTA_KEY_PATH_ENV_KEY;
 
 /**
  * Helper class for interactively generating an env.sh file.
@@ -25,13 +32,19 @@ import java.util.function.Predicate;
 @SuppressWarnings({"checkstyle:JavaDocVariable", "checkstyle:JavaDocMethod", "checkstyle:JavaDocType"})
 final class EnvGeneratorPrompt {
 
+    public static final String VAR_MANTA_USER = templatizeEnvVar(MANTA_ACCOUNT_ENV_KEY);
+    public static final String VAR_MANTA_KEY_PATH = templatizeEnvVar(MANTA_KEY_PATH_ENV_KEY);
+    public static final String VAR_MANTA_KEY_ID = templatizeEnvVar(MANTA_KEY_ID_ENV_KEY);
+    public static final String VAR_MANTA_ENCRYPTION_KEY_PATH = templatizeEnvVar(MANTA_ENCRYPTION_PRIVATE_KEY_PATH_ENV_KEY);
+    public static final String VAR_MANTA_CLIENT_ENCRYPTION_KEY_ID = templatizeEnvVar(MANTA_ENCRYPTION_KEY_ID_ENV_KEY);
+
     private static final Prompt[] PROMPTS_GENERAL = new Prompt[]{
             new Prompt(
-                    "__MANTA_USER__",
+                    VAR_MANTA_USER,
                     "Manta username (account or account/subuser): ",
                     (u) -> !u.isEmpty()),
             new Prompt(
-                    "__MANTA_KEY_PATH__",
+                    VAR_MANTA_KEY_PATH,
                     "Path to private key: ",
                     (k) -> {
                         final Path path = Paths.get(k);
@@ -53,17 +66,21 @@ final class EnvGeneratorPrompt {
 
     private static final Prompt[] PROMPTS_ENCRYPTION = new Prompt[]{
             new Prompt(
-                    "__MANTA_ENCRYPTION_KEY_PATH__",
-                    "Path to secret key? (if empty, one will be generated)",
+                    VAR_MANTA_ENCRYPTION_KEY_PATH,
+                    "Path to secret key (from generate-key): ",
                     (k) -> {
                         final Path path = Paths.get(k);
 
-                        return !Files.isReadable(path) || !Files.isRegularFile(path);
+                        return Files.isReadable(path) && Files.isRegularFile(path);
                     }),
             new Prompt(
-                    "__MANTA_CLIENT_ENCRYPTION_KEY_ID__",
+                    VAR_MANTA_CLIENT_ENCRYPTION_KEY_ID,
                     "Unique identifier for secret key (non-whitespace ASCII only): ",
-                    (id) -> StringUtils.isAsciiPrintable(id) && !StringUtils.containsWhitespace(id)),
+                    (id) -> {
+                        final boolean asciiPrintable = StringUtils.isAsciiPrintable(id);
+                        final boolean containswhite = StringUtils.containsWhitespace(id);
+                        return asciiPrintable && !containswhite;
+                    }),
     };
 
     private final Scanner input;
@@ -94,21 +111,33 @@ final class EnvGeneratorPrompt {
         }
     }
 
+    List<Prompt> getPrompts() {
+        return this.prompts;
+    }
+
     void collect() {
         for (final Prompt prompt : this.prompts) {
+            if (prompt.answer != null) {
+                continue;
+            }
+
             do {
                 prompt.display();
-            } while (!prompt.accept(this.input.next()));
+            } while (!prompt.accept(this.input.nextLine()));
         }
     }
 
     String render() {
         String result = template;
         for (final Prompt prompt : this.prompts) {
-            result = result.replace(prompt.templateVar, prompt.answer);
+            result = prompt.interpolateAnswer(result);
         }
 
         return result;
+    }
+
+    private static String templatizeEnvVar(final String envKey) {
+        return String.format("__%s__", envKey);
     }
 
     static final class Prompt {
@@ -125,6 +154,14 @@ final class EnvGeneratorPrompt {
             this.templateVar = templateVar;
             this.question = question;
             this.validator = validator;
+        }
+
+        public String getTemplateVar() {
+            return this.templateVar;
+        }
+
+        public String getAnswer() {
+            return this.answer;
         }
 
         void display() {
@@ -145,16 +182,14 @@ final class EnvGeneratorPrompt {
             return valid;
         }
 
-        String apply(final String template) {
-            if (this.answer == null) {
-                return template.replace(this.templateVar, "");
-            }
-
+        String interpolateAnswer(final String template) {
             return template.replace(this.templateVar, this.answer);
         }
 
         static Prompt withEmptyAnswer(final Prompt prompt) {
-            return new Prompt(prompt.templateVar, prompt.question, prompt.validator);
+            final Prompt answered = new Prompt(prompt.templateVar, prompt.question, prompt.validator);
+            answered.answer = "";
+            return answered;
         }
     }
 }

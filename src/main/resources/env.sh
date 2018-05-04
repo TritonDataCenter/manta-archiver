@@ -4,13 +4,16 @@ export MANTA_URL=https://us-east.manta.joyent.com:443
 
 ### Credentials
 
-# subusers are specified as "account/subuser"
+# Subusers are specified as "account/subuser"
 export MANTA_USER=__MANTA_USER__
 
 # Absolute path to an SSH private key registered with $MANTA_USER
 export MANTA_KEY_PATH=__MANTA_KEY_PATH__
 # MD5 or SHA256 fingerprint of the key specified by MANTA_KEY_PATH
 export MANTA_KEY_ID=__MANTA_KEY_ID__
+
+# Uncomment the following line and supply a passphrase if your key is password-protected
+#export MANTA_PASSWORD=
 
 # TODO: consider computing the key ID ourselves?
 # Save the user a step by computing key ID automatically
@@ -42,7 +45,7 @@ fi
 
 if [[ -z "$MANTA_KEY_PATH" || ! -f "$MANTA_KEY_PATH" || ! -s "$MANTA_KEY_PATH" ]]; then
     echo "\nError: please verify that MANTA_KEY_PATH exists, is readable and not empty"
-elif [[ ! grep 'PRIVATE KEY-----' "$MANTA_KEY_PATH" ]]; then
+elif [[ 0 -ne $(grep -q 'PRIVATE KEY-----' "$MANTA_KEY_PATH") ]]; then
     echo "\nError: please verify that MANTA_KEY_PATH is a valid OpenSSH-formatted private key"
 fi
 
