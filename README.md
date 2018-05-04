@@ -15,8 +15,13 @@ See the following wiki articles for setup instructions:
 - [Advanced](https://github.com/joyent/manta-archiver/wiki/Advanced-setup)
 
 ### Encryption
-Using stronger encryption modes (192 and 256-bit) with the Oracle and Azul JVMs requires installation of the
+Oracle and Azul JVMs require installation of the
 [Java Cryptography Extensions](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html) for Oracle JVMs and the [Zulu Cryptography Extension Kit](https://www.azul.com/products/zulu-and-zulu-enterprise/zulu-cryptography-extension-kit/) for Azul JVMs. This does not apply as of Java 8 update 161, which includes JCE by default for both [Oracle](http://www.oracle.com/technetwork/java/javase/8u161-relnotes-4021379.html#JDK-8170157) and [Azul](https://support.azul.com/hc/en-us/articles/115001122623-Java-Cryptography-Extension-JCE-for-Zing). OpenJDK distributions do not need any modifications to support stronger encryption modes.
+
+If you see the following error it means JCE is required but not installed:
+```
+Cannot support TLS_RSA_WITH_AES_256_CBC_SHA256 with currently installed providers
+```
 
 ### Commands
 

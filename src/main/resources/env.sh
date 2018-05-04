@@ -4,6 +4,8 @@ export MANTA_URL=https://us-east.manta.joyent.com:443
 
 ### Credentials
 
+# Note, any values set to the variable name with surrounding underscores is an error and should be reported.
+
 # Subusers are specified as "account/subuser"
 export MANTA_USER=__MANTA_USER__
 
@@ -14,10 +16,6 @@ export MANTA_KEY_ID=__MANTA_KEY_ID__
 
 # Uncomment the following line and supply a passphrase if your key is password-protected
 #export MANTA_PASSWORD=
-
-# TODO: consider computing the key ID ourselves?
-# Save the user a step by computing key ID automatically
-# export MANTA_KEY_ID=$(ssh-keygen -l -f ${MANTA_KEY_PATH} -E md5 | cut -d' ' -f 2)
 
 ### Encryption settings
 
@@ -37,7 +35,7 @@ export MANTA_HTTP_RETRIES=16
 export MANTA_VERIFY_UPLOADS=true
 
 ### Validate Configuration
-echo
+echo "No further output indicates a valid configuration."
 
 if [[ -z "$MANTA_USER" ]]; then
     echo "\nError: please verify that MANTA_USER is not empty"
