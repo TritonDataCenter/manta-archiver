@@ -6,14 +6,13 @@ in a compressed state with optional encryption provided by the Manta Java SDK.
 
 ## Usage
 
-You will need to configure Manta Archiver in the [same way as you configure the
-Java Manta SDK](https://github.com/joyent/java-manta/blob/master/USAGE.md#parameters) 
-by using environment variables or Java system properties. This will require
-a valid secure key configuration.
+Manta Archiver is configured in the same fashion as [java-manta](https://github.com/joyent/java-manta) but provides a way
+to interactively generate a configuration file so you don't need to learn about java-manta in order to use this project.
+See the following wiki articles for setup instructions:
 
-### Encryption
-
-Encryption is configured in the [same way as the Java Manta SDK](https://github.com/joyent/java-manta/blob/master/USAGE.md#client-side-encryption).
+- [Quick, no encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-no-encryption)
+- [Quick, with encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-with-encryption)
+- [Advanced](https://github.com/joyent/manta-archiver/wiki/Advanced-setup)
 
 ### Commands
 
@@ -21,12 +20,19 @@ Encryption is configured in the [same way as the Java Manta SDK](https://github.
 `--log-destination`: `STDOUT`, `STDERR` (default), `FILE`
 `--log-level`: `TRACE`, `DEBUG`, `INFO`, `WARN` (default), `ERROR`
 
+#### generate-env
+> Arguments: [<encryption-strength-bits>]
+>
+> **bits**: Key strength in bits. May be omitted or one of the following: `128`, `192`, `256`. See the footnote about [encryption strength requirements](#encryption) if selecting a value greater than 128.
+
+Interactively builds a configuration file from a [template](/src/main/java/resources/env.sh).
+
 #### connect-test
-Options: None
 
 This command validates that the utility can connect properly to Manta with the
 current configuration. Additionally, it outputs the final configuration.
-For example:
+
+##### Example output:
 
 ```
 $ java -jar target/manta-archiver-1.0.0-SNAPSHOT.jar connect-test
@@ -40,65 +46,60 @@ $ java -jar target/manta-archiver-1.0.0-SNAPSHOT.jar connect-test
 ```
 
 #### generate-key
-Options: `<cipher> <bits> <path>`
-
-cipher: `AES` (only supported value)
-
-bits: `128`, `192`, `256` (only supported values)
-
-path: path on local filesystem to save key
+> Arguments: `<encryption-strength-bits> <path>`
+>
+> **bits**: `128`, `192`, `256` (only supported values)
+> **path**: path on local filesystem to save key
 
 This command generates an a new encryption key using the specified parameters
 and saves it to a local path. This is your secret key and it must be proctected.
 
 #### validate-key
-Options: `<cipher> <path>`
-
-cipher: `AES` (only supported value)
-
-path: path on local filesystem to load key from
+> Arguments: `<path>`
+>
+> **path**: path on local filesystem to load key from
 
 This command validates an existing encryption key to determine if it is a valid
 key.
 
 #### upload
-Options: `<local-directory> <manta-directory>`
+> Arguments: `<local-directory> <manta-directory>`
+>
+> **local-directory**: the directory path on the local file system to send to Manta
+> **manta-directory**: the remote directory path on Manta to upload data to
 
-local-directory: the directory path on the local file system to send to Manta
-
-manta-directory: the remote directory path on Manta to upload data to
-
-This command uploads all of the files and directories under the specified 
+This command uploads all of the files and directories under the specified
 directory to Manta to Manta.
 
 #### download
-Options: `<local-directory> <manta-directory>`
-
-local-directory: the directory path on the local file system to copy files to from Manta
-
-manta-directory: the remote directory path on Manta to download data from
+> Arguments: `<local-directory> <manta-directory>`
+>
+> **local-directory**: the directory path on the local file system to copy files to from Manta
+> **manta-directory**: the remote directory path on Manta to download data from
 
 This command downloads all of the directories and files from Manta the specified
 remote Manta path.
 
 #### verify-local
-Options: `[--fix] <local-directory> <manta-directory>`
+> Arguments: `[--fix] <local-directory> <manta-directory>`
+>
+> **--fix**: optional flag that indicates we upload any missing or different files to Manta
+> **local-directory**: the directory path on the local file system to copy files to from Manta
+> **manta-directory**: the remote directory path on Manta to download data from
 
---fix: optional flag that indicates we upload any missing or different files to Manta
-
-local-directory: the directory path on the local file system to copy files to from Manta
-
-manta-directory: the remote directory path on Manta to download data from
-
-This command verifies that the contents of a local directory (files and 
+This command verifies that the contents of a local directory (files and
 directories) match the contents of a remote Manta path. If the `--fix` flag is
 present, then this command will upload any missing files/directories or files
 that do not match the remote file. Additionally, this command compares the local
 file system with the files stored on Manta.
 
 #### verify-remote
-Options: `<manta-directory>`
+> Arguments: `<manta-directory>`
 
 This command verifies that the contents of a remote directory match the checksum
 stored in Manta's metadata. It does this by downloading each file and performing
-a checksum on the contents and comparing it to the checksum in the metadata. 
+a checksum on the contents and comparing it to the checksum in the metadata.
+
+### Encryption
+Using stronger encryption modes (192 and 256-bit) with the Oracle and Azul JVMs requires installation of the
+[Java Cryptography Extensions](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html) for Oracle JVMs and the [Zulu Cryptography Extension Kit](https://www.azul.com/products/zulu-and-zulu-enterprise/zulu-cryptography-extension-kit/) for Azul JVMs. This does not apply as of Java 8 update 161, which includes JCE by default for both [Oracle](http://www.oracle.com/technetwork/java/javase/8u161-relnotes-4021379.html#JDK-8170157) and [Azul](https://support.azul.com/hc/en-us/articles/115001122623-Java-Cryptography-Extension-JCE-for-Zing). OpenJDK distributions do not need any modifications to support stronger encryption modes.
