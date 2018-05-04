@@ -26,6 +26,12 @@
             <organization>Joyent</organization>
             <organizationUrl>joyent.com</organizationUrl>
         </developer>
+        <developer>
+            <name>Tomas Celaya</name>
+            <email>tomas.celaya@joyent.com</email>
+            <organization>Joyent</organization>
+            <organizationUrl>joyent.com</organizationUrl>
+        </developer>
     </developers>
 
     <scm>
@@ -64,7 +70,7 @@
         <!-- Dependency versions -->
         <dependency.checkstyle.version>8.2</dependency.checkstyle.version>
         <dependency.picocli.version>1.0.1</dependency.picocli.version>
-        <dependency.java-manta.version>3.2.2-SNAPSHOT</dependency.java-manta.version>
+        <dependency.java-manta.version>3.2.2</dependency.java-manta.version>
         <dependency.guava.version>23.6-jre</dependency.guava.version>
         <dependency.commons-lang>3.6</dependency.commons-lang>
         <dependency.commons-compress.version>1.14</dependency.commons-compress.version>
@@ -198,37 +204,18 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>${maven-shade-plugin}</version>
+                <groupId>de.ntcomputer</groupId>
+                <artifactId>executable-packer-maven-plugin</artifactId>
+                <version>1.0.1</version>
                 <configuration>
-                    <minimizeJar>false</minimizeJar>
-                    <artifactSet>
-                        <includes>
-                            <include>**</include>
-                        </includes>
-                    </artifactSet>
-                    <filters>
-                        <filter>
-                            <artifact>*:*</artifact>
-                            <excludes>
-                                <exclude>META-INF/*.SF</exclude>
-                                <exclude>META-INF/*.DSA</exclude>
-                                <exclude>META-INF/*.RSA</exclude>
-                            </excludes>
-                        </filter>
-                    </filters>
-                    <transformers>
-                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                            <mainClass>com.joyent.manta.archiver.MantaArchiverCLI</mainClass>
-                        </transformer>
-                    </transformers>
+                    <mainClass>com.joyent.manta.archiver.MantaArchiverCLI</mainClass>
+                    <classifier>bundle</classifier>
                 </configuration>
                 <executions>
                     <execution>
                         <phase>package</phase>
                         <goals>
-                            <goal>shade</goal>
+                            <goal>pack-executable-jar</goal>
                         </goals>
                     </execution>
                 </executions>
