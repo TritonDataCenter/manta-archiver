@@ -116,7 +116,7 @@ Options: `<manta-directory>`
 
 This command verifies that the contents of a remote directory match the checksum
 stored in Manta's metadata. It does this by downloading each file and performing
-a checksum on the contents and comparing it to the checksum in the metadata. 
+a checksum on the contents and comparing it to the checksum in the metadata.
 
 ### Encryption
 Using stronger encryption modes (192 and 256-bit) with the Oracle and Azul JVMs requires installation of the
