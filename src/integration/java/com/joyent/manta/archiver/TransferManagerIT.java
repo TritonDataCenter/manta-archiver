@@ -15,11 +15,12 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 @Test
 public class TransferManagerIT {
-    private static final String MANTA_ROOT = "~~/stor/manta-archiver-test";
+    private static final String MANTA_ROOT = String.format("~~/stor/manta-archiver-test/%s", UUID.randomUUID());
     private static final Supplier<MantaClient> MANTA_CLIENT_SUPPLIER = new MantaClientSupplier();
 
     @BeforeMethod
