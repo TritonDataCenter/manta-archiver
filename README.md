@@ -6,14 +6,31 @@ in a compressed state with optional encryption provided by the Manta Java SDK.
 
 ## Usage
 
-You will need to configure Manta Archiver in the [same way as you configure the
-Java Manta SDK](https://github.com/joyent/java-manta/blob/master/USAGE.md#parameters) 
-by using environment variables or Java system properties. This will require
-a valid secure key configuration.
+### Quick
 
-### Encryption
+1. Download the [lastest release JAR](https://github.com/joyent/manta-archiver/releases.
+2. Generate a configuration file, supplying a key strength if encryption is desired. This will generate a file named `env.sh` will be generated in the current directory.
+    ```bash
+    $ java -jar manta-archiver-1.0.jar generate-env [128, 192, 256]
+    ```
 
-Encryption is configured in the [same way as the Java Manta SDK](https://github.com/joyent/java-manta/blob/master/USAGE.md#client-side-encryption).
+3. Source `env.sh`. This uses the generated file to configure manta-archiver.
+    ```bash
+    $ source env.sh
+    ```
+4. You should now be able to run the `connect-test` subcommand:
+    ```bash
+    $ java -jar manta-archiver-1.0.jar connect-test
+    ...
+    Request was successful
+    ```
+5. Finally, archive a folder with the `upload` subcommand:
+    ```bash
+    ```
+
+### Advanced
+
+
 
 ### Commands
 
@@ -21,12 +38,19 @@ Encryption is configured in the [same way as the Java Manta SDK](https://github.
 `--log-destination`: `STDOUT`, `STDERR` (default), `FILE`
 `--log-level`: `TRACE`, `DEBUG`, `INFO`, `WARN` (default), `ERROR`
 
+#### generate-env
+> Arguments: [<encryption-strength-bits>]
+>
+> **bits**: Key strength in bits. May be omitted or one of the following: `128`, `192`, `256`. See the footnote about [encryption strength requirements](#encryption) if selecting a value greater than 128.
+
+Interactively builds a configuration file from a [template](/src/main/java/resources/env.sh).
+
 #### connect-test
-Options: None
 
 This command validates that the utility can connect properly to Manta with the
 current configuration. Additionally, it outputs the final configuration.
-For example:
+
+##### Example output:
 
 ```
 $ java -jar target/manta-archiver-1.0.0-SNAPSHOT.jar connect-test
@@ -40,55 +64,46 @@ $ java -jar target/manta-archiver-1.0.0-SNAPSHOT.jar connect-test
 ```
 
 #### generate-key
-Options: `<cipher> <bits> <path>`
-
-cipher: `AES` (only supported value)
-
-bits: `128`, `192`, `256` (only supported values)
-
-path: path on local filesystem to save key
+> Arguments: `<encryption-strength-bits> <path>`
+>
+> **bits**: `128`, `192`, `256` (only supported values)
+> **path**: path on local filesystem to save key
 
 This command generates an a new encryption key using the specified parameters
 and saves it to a local path. This is your secret key and it must be proctected.
 
 #### validate-key
-Options: `<cipher> <path>`
-
-cipher: `AES` (only supported value)
-
-path: path on local filesystem to load key from
+> Arguments: `<path>`
+>
+> **path**: path on local filesystem to load key from
 
 This command validates an existing encryption key to determine if it is a valid
 key.
 
 #### upload
-Options: `<local-directory> <manta-directory>`
-
-local-directory: the directory path on the local file system to send to Manta
-
-manta-directory: the remote directory path on Manta to upload data to
+> Arguments: `<local-directory> <manta-directory>`
+>
+> **local-directory**: the directory path on the local file system to send to Manta
+> **manta-directory**: the remote directory path on Manta to upload data to
 
 This command uploads all of the files and directories under the specified 
 directory to Manta to Manta.
 
 #### download
-Options: `<local-directory> <manta-directory>`
-
-local-directory: the directory path on the local file system to copy files to from Manta
-
-manta-directory: the remote directory path on Manta to download data from
+> Arguments: `<local-directory> <manta-directory>`
+>
+> **local-directory**: the directory path on the local file system to copy files to from Manta
+> **manta-directory**: the remote directory path on Manta to download data from
 
 This command downloads all of the directories and files from Manta the specified
 remote Manta path.
 
 #### verify-local
-Options: `[--fix] <local-directory> <manta-directory>`
-
---fix: optional flag that indicates we upload any missing or different files to Manta
-
-local-directory: the directory path on the local file system to copy files to from Manta
-
-manta-directory: the remote directory path on Manta to download data from
+> Arguments: `[--fix] <local-directory> <manta-directory>`
+>
+> **--fix**: optional flag that indicates we upload any missing or different files to Manta
+> **local-directory**: the directory path on the local file system to copy files to from Manta
+> **manta-directory**: the remote directory path on Manta to download data from
 
 This command verifies that the contents of a local directory (files and 
 directories) match the contents of a remote Manta path. If the `--fix` flag is
@@ -102,3 +117,7 @@ Options: `<manta-directory>`
 This command verifies that the contents of a remote directory match the checksum
 stored in Manta's metadata. It does this by downloading each file and performing
 a checksum on the contents and comparing it to the checksum in the metadata. 
+
+### Encryption
+Using stronger encryption modes (192 and 256-bit) with the Oracle and Azul JVMs requires installation of the
+[Java Cryptography Extensions](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html) for Oracle JVMs and the [Zulu Cryptography Extension Kit](https://www.azul.com/products/zulu-and-zulu-enterprise/zulu-cryptography-extension-kit/) for Azul JVMs. This does not apply as of Java 8 update 161, which includes JCE by default for both [Oracle](http://www.oracle.com/technetwork/java/javase/8u161-relnotes-4021379.html#JDK-8170157) and [Azul](https://support.azul.com/hc/en-us/articles/115001122623-Java-Cryptography-Extension-JCE-for-Zing). OpenJDK distributions do not need any modifications to support stronger encryption modes.

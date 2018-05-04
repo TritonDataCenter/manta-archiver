@@ -20,30 +20,36 @@ import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.client.crypto.SecretKeyUtils;
 import com.joyent.manta.config.ConfigContext;
 import com.joyent.manta.util.MantaVersion;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.Scanner;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.CommandLogLevel.DEBUG;
 import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.CommandLogLevel.INFO;
 
-@CommandLine.Command(name = "java-manta-cli", sortOptions = false,
+@CommandLine.Command(name = "manta-archiver", sortOptions = false,
         header = {
                 "@|cyan                 .     .             |@",
                 "@|cyan                 |_.-._|             |@",
                 "@|cyan               ./       \\.          |@",
                 "@|cyan          _.-'`           `'-._      |@",
-                "@|cyan       .-'        Java         '-.   |@",
-                "@|cyan     ,'_.._       Manta       _.._', |@",
+                "@|cyan       .-'        Manta        '-.   |@",
+                "@|cyan     ,'_.._      Archiver     _.._', |@",
                 "@|cyan     '`    `'-.           .-'`    `' |@",
                 "@|cyan               '.       .'           |@",
                 "@|cyan                 \\_/|\\_/           |@",
@@ -58,6 +64,7 @@ import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.Command
         subcommands = {
                 MantaArchiverCLI.ConnectTest.class,
                 MantaArchiverCLI.GenerateKey.class,
+                MantaArchiverCLI.GenerateEnv.class,
                 MantaArchiverCLI.ValidateKey.class,
                 MantaArchiverCLI.Upload.class,
                 MantaArchiverCLI.Download.class,
@@ -218,6 +225,17 @@ public class MantaArchiverCLI {
         private LogDestination logDestination;
 
         public abstract void run();
+
+        @SuppressWarnings("checkstyle:MagicNumber")
+        static void validateBits(final int bits) {
+            if (bits == 0 || bits == 128 || bits == 192 || bits == 256) {
+                    return;
+            }
+
+            System.err.println("Allowed values for bits: (empty), 128, 192, 256");
+            System.err.println(String.format("Provided: [%s]", bits));
+            System.exit(1);
+        }
     }
 
     @CommandLine.Command(name = "connect-test",
@@ -257,15 +275,18 @@ public class MantaArchiverCLI {
                     + "cipher and bits at the specified path.")
     public static class GenerateKey extends MantaSubCommand {
 
-        @CommandLine.Parameters(index = "0", description = "cipher to generate key for")
-        private String cipher;
-        @CommandLine.Parameters(index = "1", description = "number of bits of the key")
+        // Meaningless to users
+        private final String cipher = "AES";
+
+        @CommandLine.Parameters(index = "0", description = "number of bits of the key")
         private int bits;
-        @CommandLine.Parameters(index = "2", description = "path to write the key to")
+        @CommandLine.Parameters(index = "1", description = "path to write the key to")
         private Path path;
 
         @Override
         public void run() {
+            validateBits(bits);
+
             StringBuilder b = new StringBuilder();
 
             try {
@@ -295,9 +316,11 @@ public class MantaArchiverCLI {
             description = "Validates that the supplied key is supported by the "
                     + "SDK's client-side encryption functionality.")
     public static class ValidateKey extends MantaSubCommand {
-        @CommandLine.Parameters(index = "0", description = "cipher to validate the key against")
-        private String cipher;
-        @CommandLine.Parameters(index = "1", description = "path to read the key from")
+
+        // Meaningless to users
+        private final String cipher = "AES";
+
+        @CommandLine.Parameters(index = "0", description = "path to read the key from")
         private Path path;
 
         @Override
@@ -337,6 +360,68 @@ public class MantaArchiverCLI {
             }
 
             System.out.println(b.toString());
+        }
+    }
+
+    @CommandLine.Command(name = "generate-env",
+                         header = "Interactively generate an env.sh file to be used with an archive command.",
+                         description = "Prompts for values to be inserted in a newly-generated config file, "
+                                 + "allowing users to get started with manta-archiver without prior "
+                                 + "knowledge of java-manta to get started quickly.")
+    public static class GenerateEnv extends MantaSubCommand {
+
+        @CommandLine.Parameters(index = "0",
+                                description = "encryption key strength in bits",
+                                arity = "0..1")
+        private int bits;
+
+        private final Scanner scanner = new Scanner(System.in);
+
+        @Override
+        public void run() {
+            validateBits(bits);
+
+            final File targetFile = new File("env.sh");
+
+            if (targetFile.exists()) {
+                System.err.println("env.sh is already present in this directory, please delete or rename it.");
+                System.exit(1);
+            }
+
+            String envFileTemplate;
+            try (InputStream envTemplateContents = this.getClass().getClassLoader().getResourceAsStream("env.sh")) {
+                envFileTemplate = IOUtils.toString(envTemplateContents, StandardCharsets.US_ASCII);
+            } catch (IOException e) {
+                System.err.println("An error occurred loading env.sh template");
+                e.printStackTrace(System.err);
+                System.exit(1);
+                throw new UncheckedIOException(e); // satisfy static analysis
+            }
+
+            // We get the answer to __MANTA_ENCRYPTION_ALGORITHM__ here so just prepare it now
+            final boolean encryptionDesired = bits != 0;
+            if (encryptionDesired) {
+                envFileTemplate = envFileTemplate.replace("__MANTA_ENCRYPTION_ALGORITHM__", String.format("AES%s/CTR/NoPadding", bits));
+            }
+
+            final EnvGeneratorPrompt configBuilder = new EnvGeneratorPrompt(scanner, envFileTemplate, encryptionDesired);
+
+            configBuilder.collect();
+            final String rendered = configBuilder.render();
+
+            try {
+                if (!targetFile.createNewFile()) {
+                    throw new IOException("Expected env.sh file not to exist");
+                }
+
+                try (FileOutputStream targetFileStream = new FileOutputStream(targetFile)) {
+                    IOUtils.write(rendered, targetFileStream, StandardCharsets.US_ASCII);
+                }
+            } catch (IOException e) {
+                System.err.println("An error occurred while rendering env.sh");
+                e.printStackTrace(System.err);
+                System.exit(1);
+            }
         }
     }
 
