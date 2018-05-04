@@ -21,11 +21,11 @@ See the following wiki articles for setup instructions:
 `--log-level`: `TRACE`, `DEBUG`, `INFO`, `WARN` (default), `ERROR`
 
 #### generate-env
-> Arguments: [<encryption-strength-bits>]
+> Arguments: [ bits ]
 >
-> **bits**: Key strength in bits. May be omitted or one of the following: `128`, `192`, `256`. See the footnote about [encryption strength requirements](#encryption) if selecting a value greater than 128.
+> **bits**: Optional key strength in bits. May be omitted or one of the following: `128`, `192`, `256`.
 
-Interactively builds a configuration file from a [template](/src/main/java/resources/env.sh).
+Interactively builds a configuration file from a [template](/src/main/java/resources/env.sh). If `bits` is provided the generated configuration will have encryption enabled. See the footnote about [encryption strength requirements](#encryption) if selecting a value greater than 128.
 
 #### connect-test
 
@@ -47,8 +47,8 @@ $ java -jar target/manta-archiver-1.0.0-SNAPSHOT.jar connect-test
 
 #### generate-key
 > Arguments: `<encryption-strength-bits> <path>`
->
-> **bits**: `128`, `192`, `256` (only supported values)
+>  
+> **bits**: `128`, `192`, `256` (only supported values)  
 > **path**: path on local filesystem to save key
 
 This command generates an a new encryption key using the specified parameters
@@ -57,34 +57,34 @@ and saves it to a local path. This is your secret key and it must be proctected.
 #### validate-key
 > Arguments: `<path>`
 >
-> **path**: path on local filesystem to load key from
+> **path**: path to key on local filesystem to check
 
 This command validates an existing encryption key to determine if it is a valid
 key.
 
 #### upload
-> Arguments: `<local-directory> <manta-directory>`
->
-> **local-directory**: the directory path on the local file system to send to Manta
+> Arguments: `<local-directory> <manta-directory>`  
+>  
+> **local-directory**: the directory path on the local file system to send to Manta  
 > **manta-directory**: the remote directory path on Manta to upload data to
 
 This command uploads all of the files and directories under the specified
 directory to Manta to Manta.
 
 #### download
-> Arguments: `<local-directory> <manta-directory>`
->
-> **local-directory**: the directory path on the local file system to copy files to from Manta
+> Arguments: `<local-directory> <manta-directory>`  
+>  
+> **local-directory**: the directory path on the local file system to copy files to from Manta  
 > **manta-directory**: the remote directory path on Manta to download data from
 
 This command downloads all of the directories and files from Manta the specified
 remote Manta path.
 
 #### verify-local
-> Arguments: `[--fix] <local-directory> <manta-directory>`
->
-> **--fix**: optional flag that indicates we upload any missing or different files to Manta
-> **local-directory**: the directory path on the local file system to copy files to from Manta
+> Arguments: `[--fix] <local-directory> <manta-directory>`  
+>  
+> **--fix**: optional flag that indicates we upload any missing or different files to Manta  
+> **local-directory**: the directory path on the local file system to copy files to from Manta  
 > **manta-directory**: the remote directory path on Manta to download data from
 
 This command verifies that the contents of a local directory (files and
