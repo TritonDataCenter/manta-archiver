@@ -15,6 +15,8 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
 import ch.qos.logback.core.ConsoleAppender;
 import ch.qos.logback.core.FileAppender;
+import com.joyent.http.signature.KeyFingerprinter;
+import com.joyent.http.signature.KeyPairLoader;
 import com.joyent.manta.client.MantaClient;
 import com.joyent.manta.client.MantaObjectResponse;
 import com.joyent.manta.client.crypto.SecretKeyUtils;
@@ -33,8 +35,10 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.Optional;
 import java.util.Scanner;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -401,13 +405,39 @@ public class MantaArchiverCLI {
             // We get the answer to __MANTA_ENCRYPTION_ALGORITHM__ here so just prepare it now
             final boolean encryptionDesired = bits != 0;
             if (encryptionDesired) {
+                envFileTemplate = envFileTemplate.replace("__MANTA_CLIENT_ENCRYPTION__", "true");
                 envFileTemplate = envFileTemplate.replace("__MANTA_ENCRYPTION_ALGORITHM__", String.format("AES%s/CTR/NoPadding", bits));
+            } else {
+                envFileTemplate = envFileTemplate.replace("__MANTA_CLIENT_ENCRYPTION__", "false");
+                envFileTemplate = envFileTemplate.replace("__MANTA_ENCRYPTION_ALGORITHM__", "");
             }
 
             final EnvGeneratorPrompt configBuilder = new EnvGeneratorPrompt(scanner, envFileTemplate, encryptionDesired);
 
             configBuilder.collect();
-            final String rendered = configBuilder.render();
+            String rendered = configBuilder.render();
+
+            final Optional<EnvGeneratorPrompt.Prompt> keyPath = configBuilder.getPrompts()
+                    .stream()
+                    .filter(prompt -> EnvGeneratorPrompt.VAR_MANTA_KEY_PATH.equals(prompt.getTemplateVar()))
+                    .findFirst();
+
+            // this option is required for everyone and its validator makes
+            // sure the file is present (and also most likely valid)
+            if (!keyPath.isPresent()) {
+                new Exception("An unrecoverable error occurred while rendering env.sh").printStackTrace(System.err);
+                System.exit(1);
+            }
+
+            try {
+                final String keyPathAnswer = keyPath.get().getAnswer();
+                final KeyPair keyPair = KeyPairLoader.getKeyPair(new File(keyPathAnswer));
+                rendered = rendered.replace(EnvGeneratorPrompt.VAR_MANTA_KEY_ID, "MD5:" + KeyFingerprinter.md5Fingerprint(keyPair));
+            } catch (final IOException e) {
+                System.err.println("An error occurred while rendering env.sh: ");
+                e.printStackTrace(System.err);
+                System.exit(1);
+            }
 
             try {
                 if (!targetFile.createNewFile()) {
@@ -417,8 +447,8 @@ public class MantaArchiverCLI {
                 try (FileOutputStream targetFileStream = new FileOutputStream(targetFile)) {
                     IOUtils.write(rendered, targetFileStream, StandardCharsets.US_ASCII);
                 }
-            } catch (IOException e) {
-                System.err.println("An error occurred while rendering env.sh");
+            } catch (final IOException e) {
+                System.err.println("An error occurred while rendering env.sh: ");
                 e.printStackTrace(System.err);
                 System.exit(1);
             }
