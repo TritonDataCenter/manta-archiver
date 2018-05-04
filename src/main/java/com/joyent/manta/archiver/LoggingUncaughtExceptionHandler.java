@@ -7,6 +7,7 @@
  */
 package com.joyent.manta.archiver;
 
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,8 @@ public class LoggingUncaughtExceptionHandler implements Thread.UncaughtException
 
     @Override
     public void uncaughtException(final Thread t, final Throwable e) {
-        final Throwable rootCause = ExceptionUtils.getRootCause(e);
+        final Throwable rootCause = ObjectUtils.firstNonNull(ExceptionUtils.getRootCause(e), e);
+
         logger.error(rootCause.getMessage(), e);
     }
 }

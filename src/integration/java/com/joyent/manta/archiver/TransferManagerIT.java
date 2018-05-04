@@ -25,7 +25,8 @@ public class TransferManagerIT {
 
     @BeforeMethod
     public void setup() throws IOException {
-        FileUtils.deleteDirectory(ObjectUploadQueueLoader.TEMP_PATH.toFile());
+        FileUtils.deleteQuietly(ObjectUploadQueueLoader.TEMP_PATH.toFile());
+
         try (MantaClient client = MANTA_CLIENT_SUPPLIER.get()) {
             String home = client.getContext().getMantaHomeDirectory();
             client.putDirectory(MantaTransferClient.substituteHomeDirectory(MANTA_ROOT, home), true);
