@@ -24,14 +24,14 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.CommandLogLevel.DEBUG;
 import static com.joyent.manta.archiver.MantaArchiverCLI.MantaSubCommand.CommandLogLevel.INFO;
@@ -377,12 +377,15 @@ public class MantaArchiverCLI {
                 index = "1", description = "directory in Manta to upload files to")
         private String mantaDirectory;
 
+        @CommandLine.Option(names = {"-p", "--mkdirp"})
+        private boolean mkdirp;
+
         @Override
         public void run() {
             final Path localRoot = findLocalPath(localDirectory);
 
             MantaTransferClient mantaTransferClient = new MantaTransferClient(
-                    MANTA_CLIENT_SUPPLIER, mantaDirectory);
+                    MANTA_CLIENT_SUPPLIER, mantaDirectory, localRoot, mkdirp);
 
             try (TransferManager manager = new TransferManager(mantaTransferClient,
                     localRoot)) {

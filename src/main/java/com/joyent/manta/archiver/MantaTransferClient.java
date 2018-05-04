@@ -128,7 +128,24 @@ class MantaTransferClient implements TransferClient {
      * @param clientSupplier Manta client supplier that provides configured MantaClient instances
      * @param mantaRoot remote working directory
      */
-    MantaTransferClient(final Supplier<MantaClient> clientSupplier, final String mantaRoot) {
+    MantaTransferClient(final Supplier<MantaClient> clientSupplier,
+                        final String mantaRoot) {
+        this(clientSupplier, mantaRoot, null, false);
+    }
+
+    /**
+     * Creates a new instance based on the specified Manta client and the
+     * remote working directory.
+     *
+     * @param clientSupplier Manta client supplier that provides configured MantaClient instances
+     * @param mantaRoot remote working directory
+     * @param localPath local source path
+     * @param createParentDirectories recover from a missing manta root automatically
+     */
+    MantaTransferClient(final Supplier<MantaClient> clientSupplier,
+                        final String mantaRoot,
+                        final Path localPath,
+                        final boolean createParentDirectories) {
         // A null supplier is only ever valid when testing
         if (clientSupplier == null) {
             this.clientRef = null;
@@ -144,32 +161,43 @@ class MantaTransferClient implements TransferClient {
             this.mantaRoot = normalized;
             this.singleFile = null;
         } else {
-            try {
-                MantaObjectResponse head = clientRef.get().head(normalized);
+            MantaObjectResponse existingRemote = null;
+            TransferClientException errorCheckingRemote = null;
+            boolean missingRemote = false;
 
-                if (head.isDirectory()) {
-                    this.mantaRoot = normalized;
-                    this.singleFile = null;
-                } else {
-                    String noSeparator = StringUtils.removeEnd(normalized, MantaClient.SEPARATOR);
-                    String parent = FilenameUtils.getFullPath(noSeparator);
-                    this.mantaRoot = parent;
-                    this.singleFile = FilenameUtils.getName(noSeparator);
-                }
+            try {
+                existingRemote = clientRef.get().head(normalized);
             } catch (IOException e) {
                 if (e instanceof MantaClientHttpResponseException) {
                     MantaClientHttpResponseException mchre = (MantaClientHttpResponseException) e;
 
                     if (mchre.getStatusCode() == HttpStatus.SC_NOT_FOUND) {
                         String msg = String.format("Remote path does not exist: %s", normalized);
-                        throw new TransferClientException(msg);
+                        errorCheckingRemote = new TransferClientException(msg);
+                        missingRemote = true;
                     }
+                } else {
+                    String msg = "Error accessing remote Manta path";
+                    TransferClientException tce = new TransferClientException(msg, e);
+                    tce.setContextValue("mantaPath", normalized);
+                    errorCheckingRemote = tce;
                 }
+            }
 
-                String msg = "Error accessing remote Manta path";
-                TransferClientException tce = new TransferClientException(msg, e);
-                tce.setContextValue("mantaPath", normalized);
-                throw tce;
+            if (missingRemote && createParentDirectories && localPath != null) {
+                // 404 exception and user has indicated they'd like to create the missing parents
+                final boolean localPathIsDir = Files.isDirectory(localPath);
+                this.mantaRoot = extractMantaRoot(normalized, localPathIsDir);
+                this.singleFile = extractSingleFile(normalized, localPathIsDir);
+                ensureMantaRootExists();
+            } else if (errorCheckingRemote != null) {
+                // something else went wrong
+                throw errorCheckingRemote;
+            } else if (existingRemote != null) {
+                this.mantaRoot = extractMantaRoot(normalized, existingRemote.isDirectory());
+                this.singleFile = extractSingleFile(normalized, existingRemote.isDirectory());
+            } else {
+                throw new TransferClientException("Unexpected error occurred while preparing client.");
             }
 
             populateDirectoryCache();
@@ -833,6 +861,34 @@ class MantaTransferClient implements TransferClient {
             return MantaUtils.formatPath(homeDir + path.substring(2));
         } else {
             return MantaUtils.formatPath(path);
+        }
+    }
+
+    private static String extractMantaRoot(final String path, final boolean isDir) {
+        if (isDir) {
+            return path;
+        } else {
+            final String noSeparator = StringUtils.removeEnd(path, MantaClient.SEPARATOR);
+            return FilenameUtils.getFullPath(noSeparator);
+        }
+    }
+
+    private static String extractSingleFile(final String path, final boolean isDir) {
+        if (isDir) {
+            return null;
+        } else {
+            final String noSeparator = StringUtils.removeEnd(path, MantaClient.SEPARATOR);
+            return FilenameUtils.getName(noSeparator);
+        }
+    }
+
+    private void ensureMantaRootExists() {
+        try {
+            clientRef.get().putDirectory(this.mantaRoot, true);
+        } catch (final IOException ioe) {
+            final TransferClientException tce = new TransferClientException("Error creating manta directory");
+            tce.setContextValue("mantaPath", this.mantaRoot);
+            throw tce;
         }
     }
 }
