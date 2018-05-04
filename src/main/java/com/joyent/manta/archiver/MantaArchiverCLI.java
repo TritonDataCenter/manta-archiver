@@ -271,7 +271,7 @@ public class MantaArchiverCLI {
 
     @CommandLine.Command(name = "generate-key",
             header = "Generate an encryption key",
-            description = "Generates a client-side encryption key with the specified "
+            description = "Generates a secret key for client-side encryption with the specified "
                     + "cipher and bits at the specified path.")
     public static class GenerateKey extends MantaSubCommand {
 
@@ -280,7 +280,7 @@ public class MantaArchiverCLI {
 
         @CommandLine.Parameters(index = "0", description = "number of bits of the key")
         private int bits;
-        @CommandLine.Parameters(index = "1", description = "path to write the key to")
+        @CommandLine.Parameters(index = "1", description = "path to write the secret key to")
         private Path path;
 
         @Override
@@ -293,7 +293,7 @@ public class MantaArchiverCLI {
                 b.append("Generating key").append(BR);
                 SecretKey key = SecretKeyUtils.generate(cipher, bits);
 
-                b.append(String.format("Writing [%s-%d] key to [%s]", cipher, bits, path));
+                b.append(String.format("Writing [%s-%d] secret key to [%s]", cipher, bits, path));
                 SecretKeyUtils.writeKeyToPath(key, path);
             } catch (NoSuchAlgorithmException e) {
                 System.err.printf("The running JVM [%s/%s] doesn't support the "
@@ -302,7 +302,7 @@ public class MantaArchiverCLI {
                 System.err.println();
                 return;
             } catch (IOException e) {
-                String msg = String.format("Unable to write key to path [%s]",
+                String msg = String.format("Unable to write secret key to path [%s]",
                         path);
                 throw new UncheckedIOException(msg, e);
             }
@@ -313,14 +313,14 @@ public class MantaArchiverCLI {
 
     @CommandLine.Command(name = "validate-key",
             header = "Validate an encryption key",
-            description = "Validates that the supplied key is supported by the "
+            description = "Validates that the supplied secret key is supported by the "
                     + "SDK's client-side encryption functionality.")
     public static class ValidateKey extends MantaSubCommand {
 
         // Meaningless to users
         private final String cipher = "AES";
 
-        @CommandLine.Parameters(index = "0", description = "path to read the key from")
+        @CommandLine.Parameters(index = "0", description = "path to read the secret key from")
         private Path path;
 
         @Override
@@ -328,16 +328,16 @@ public class MantaArchiverCLI {
             StringBuilder b = new StringBuilder();
 
             try {
-                b.append(String.format("Loading key from path [%s]", path)).append(BR);
+                b.append(String.format("Loading secret key from path [%s]", path)).append(BR);
                 SecretKeySpec key = SecretKeyUtils.loadKeyFromPath(path, cipher);
 
                 if (key.getAlgorithm().equals(cipher)) {
-                    b.append("Cipher of key is [")
+                    b.append("Cipher of secret key is [")
                             .append(cipher)
                             .append("] as expected")
                             .append(BR);
                 } else {
-                    b.append("Cipher of key is [")
+                    b.append("Cipher of secret key is [")
                             .append(key.getAlgorithm())
                             .append("] - it doesn't match the expected cipher of [")
                             .append(cipher)
@@ -354,7 +354,7 @@ public class MantaArchiverCLI {
                 System.err.println();
                 return;
             } catch (IOException e) {
-                String msg = String.format("Unable to read key from path [%s]",
+                String msg = String.format("Unable to read secret key from path [%s]",
                         path);
                 throw new UncheckedIOException(msg, e);
             }
@@ -371,7 +371,7 @@ public class MantaArchiverCLI {
     public static class GenerateEnv extends MantaSubCommand {
 
         @CommandLine.Parameters(index = "0",
-                                description = "encryption key strength in bits",
+                                description = "secret key strength in bits",
                                 arity = "0..1")
         private int bits;
 
