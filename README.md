@@ -10,9 +10,9 @@ Manta Archiver is configured in the same fashion as [java-manta](https://github.
 to interactively generate a configuration file so you don't need to learn about java-manta in order to use this project.
 See the following wiki articles for setup instructions:
 
-- [Quick, no encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-no-encryption)
-- [Quick, with encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-with-encryption)
-- [Advanced](https://github.com/joyent/manta-archiver/wiki/Advanced-setup)
+- [Quick setup instructions, no encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-no-encryption)
+- [Quick setup instructions, with encryption](https://github.com/joyent/manta-archiver/wiki/Quick-setup,-with-encryption)
+- [Advanced setup](https://github.com/joyent/manta-archiver/wiki/Advanced-setup)
 
 ### Encryption
 Oracle and Azul JVMs require installation of the
