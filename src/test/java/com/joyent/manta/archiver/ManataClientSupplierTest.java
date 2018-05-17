@@ -6,6 +6,13 @@
  */
 package com.joyent.manta.archiver;
 
+import com.joyent.manta.client.MantaClient;
+import com.joyent.manta.config.DefaultsConfigContext;
+import com.joyent.manta.exception.ConfigurationException;
+import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -15,14 +22,6 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
-
-import org.testng.Assert;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
-
-import com.joyent.http.signature.KeyLoadException;
-import com.joyent.manta.client.MantaClient;
-import com.joyent.manta.exception.ConfigurationException;
 
 @Test(singleThreaded = true)
 public class ManataClientSupplierTest {
@@ -53,8 +52,9 @@ public class ManataClientSupplierTest {
         Assert.assertNotNull(client);
     }
 
-    @Test(expectedExceptions = {
-            KeyLoadException.class }, expectedExceptionsMessageRegExp = ".*testKey.ida.*", description = "This will create a empty temp file and set the property to point to it")
+    @Test(expectedExceptions = ConfigurationException.class,
+          expectedExceptionsMessageRegExp = ".*testKey.ida.*",
+          description = "This will create a empty temp file and set the property to point to it")
     public void emptyKeyFile() throws IOException {
         String keyfile = "testKey.ida";
         keyfile = String.format("%s%s", System.getProperty("java.io.tmpdir"), keyfile);
@@ -67,11 +67,10 @@ public class ManataClientSupplierTest {
 
     /**
      * This will have an invalid key file, but not empty.
-     *
-     * @throws IOException
      */
-    @Test(expectedExceptions = {
-            KeyLoadException.class }, expectedExceptionsMessageRegExp = ".*invalidKey.ida.*", description = "This will create a non-empty invalid key")
+    @Test(expectedExceptions = ConfigurationException.class,
+          expectedExceptionsMessageRegExp = ".*invalidKey.ida.*",
+          description = "This will create a non-empty invalid key")
     public void invalidKey() throws IOException {
         String filename = "invalidKey.ida";
         filename = String.format("%s%s", System.getProperty("java.io.tmpdir"), filename);
@@ -90,7 +89,9 @@ public class ManataClientSupplierTest {
         Assert.assertNull(client);
     }
 
-    @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*protocol = null.*", description = "This will use an invalid URL")
+    @Test(expectedExceptions = IllegalArgumentException.class,
+          expectedExceptionsMessageRegExp = ".*protocol = null.*",
+          description = "This will use an invalid URL")
     public void invalidURL() throws IOException {
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_URL_KEY, "www.google.com");
         MantaClient client = MANTA_CLIENT_SUPPLIER.get();
@@ -102,7 +103,7 @@ public class ManataClientSupplierTest {
         System.clearProperty(com.joyent.manta.config.MapConfigContext.MANTA_URL_KEY);
         MantaClient client = MANTA_CLIENT_SUPPLIER.get();
         // Should default to us-east.
-        Assert.assertEquals(client.getContext().getMantaURL(), "https://us-east.manta.joyent.com");
+        Assert.assertEquals(client.getContext().getMantaURL(), DefaultsConfigContext.DEFAULT_MANTA_URL);
     }
 
     @Test
@@ -184,8 +185,8 @@ public class ManataClientSupplierTest {
         Assert.assertNotNull(client);
     }
 
-    @Test(expectedExceptions = {
-            ConfigurationException.class }, expectedExceptionsMessageRegExp = "Given fingerprint invalid does not match expected key.*")
+    @Test(expectedExceptions = ConfigurationException.class,
+          expectedExceptionsMessageRegExp = "Given fingerprint invalid does not match expected key.*")
     public void invalidKeyId() throws IOException {
         System.setProperty(com.joyent.manta.config.MapConfigContext.MANTA_KEY_ID_KEY, "invalid");
         MantaClient client = MANTA_CLIENT_SUPPLIER.get();
